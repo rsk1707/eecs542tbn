@@ -62,11 +62,11 @@ Roles are **self-selected**. Each role owns a directory under `src/promptcorrect
 
 | Role | Owner | Owns | Leads | Est. effort* |
 |---|---|---|---|---|
-| **P1 — Segmenters & infra** | UNCLAIMED | `container/`, GreatLakes setup, `segmenters/`, feature cache, `slurm/`, GPU budget tracking | supports everyone | 3–4 days |
-| **P2 — Data & detectors** | UNCLAIMED | `data/`, `detectors/`, COCO/LVIS records, seen/unseen split, mined real failures | RQ3 | 2–3 days |
-| **P3 — Eval & oracle** | UNCLAIMED | `eval/`, metrics, matching, ideal-click simulator, result tables/figures, report editing | RQ0, RQ4 | 3–4 days |
-| **P4 — Perturbations & baselines** | UNCLAIMED | `perturb/`, `baselines/`, sensitivity sweeps, training-data variants and ablation launches | RQ2 | 3–4 days |
-| **P5 — Corrector model** | UNCLAIMED | `corrector/`: architecture, losses, training loop | RQ1 | 6–8 days |
+| **P1 — Segmenters & infra** | Srikrishnan | `container/`, GreatLakes setup, `segmenters/`, feature cache, `slurm/`, GPU budget tracking | supports everyone | 3–4 days |
+| **P2 — Data & detectors** | Shresth | `data/`, `detectors/`, COCO/LVIS records, seen/unseen split, mined real failures | RQ3 | 2–3 days |
+| **P3 — Eval & oracle** | Divya | `eval/`, metrics, matching, ideal-click simulator, result tables/figures, report editing | RQ0, RQ4 | 3–4 days |
+| **P4 — Perturbations & baselines** | Aman | `perturb/`, `baselines/`, sensitivity sweeps, training-data variants and ablation launches | RQ2 | 3–4 days |
+| **P5 — Corrector model** | Sharvani (and Srikrishnan to split any extra work) | `corrector/`: architecture, losses, training loop | RQ1 | 6–8 days |
 
 \*Rough coding days over the 6 weeks, excluding report writing. P5 is the heaviest and the hardest to estimate.
 
