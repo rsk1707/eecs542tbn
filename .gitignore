@@ -218,3 +218,23 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Project-specific (eecs542tbn) ---
+# Large artifacts: these live on GreatLakes scratch, never in git
+*.sif
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+/data/
+/cache/
+/ckpt/
+/runs/
+/_local/
+
+# Editors / OS
+.vscode/
+.DS_Store
+
+# Secrets
+*.token

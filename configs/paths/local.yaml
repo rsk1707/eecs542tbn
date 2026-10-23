@@ -1,0 +1,6 @@
+# Laptop paths (used when PC_PATHS is unset or "local").
+# Relative paths resolve against the repo root. _local/ is gitignored.
+data_root: _local/data
+cache_root: _local/cache
+ckpt_root: _local/ckpt
+runs_root: _local/runs

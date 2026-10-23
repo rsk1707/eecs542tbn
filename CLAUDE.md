@@ -128,6 +128,8 @@ Everyone codes on the **same two days each week** so handoffs happen within a se
 | 6 | Write-up and presentation. **No new experiments.** |
 
 ### Demo-sprint deliverables (proposal presentation, 6–7 min)
+Exact per-person plan, gates and contingencies: [`docs/demo_sprint.md`](docs/demo_sprint.md).
+
 1. Problem slide with a before/after failure example.
 2. RQ0 failure rates (IoU < 0.5 / 0.75 / 0.9) for SAM 3 text and detector-box -> SAM.
 3. Sensitivity curves (IoU vs. box shift / scale).
@@ -155,9 +157,9 @@ Global conventions: boxes are `xyxy` absolute pixels in the original image; mask
 - Course account has (per RMP): **GPU 371 h, SPGPU 562 h, Standard 4,053 h, Largemem 1,318 h** (confirm units; ~930 GPU-hours total vs ~150 planned).
 - **SPGPU (A40, 48 GB)** for SAM 3. `gpu` (V100) only for small tests. **Standard** for CPU-only work (eval, perturbation generation, metrics). Don't use Largemem.
 - Never run heavy work on login nodes. Use `sbatch` / `srun`. Always pass `--account=<ACCOUNT>`. Log GPU-hours you use in the team channel.
-- **Storage:** all shared data on `/scratch`, in a group-writable shared dir:
+- **Storage:** all shared data on `/scratch`, in the owner's (Srikrishnan's) scratch folder, shared with the four teammates via per-user ACLs (`setfacl`, access + default ACLs for all five uniqnames). Do **not** use group permissions (`chmod g+...`): the account `eecs542f26s001_class` is class-wide, so the group is every student.
   ```
-  /scratch/<ACCOUNT>_root/<ACCOUNT>/shared_data/eecs542tbn/
+  /scratch/eecs542f26s001_class_root/eecs542f26s001_class/<OWNER_UNIQNAME>/eecs542tbn/
       data/        # COCO, LVIS (read-only after download)
       cache/       # features, detections
       ckpt/        # model weights
@@ -176,20 +178,26 @@ Global conventions: boxes are `xyxy` absolute pixels in the original image; mask
 
 Placeholders `<ACCOUNT>`, `<uniqname>` to fill in here once confirmed: (TODO)
 
-## 9. Repo layout (planned — the scaffold is being created)
+## 9. Repo layout
 
 ```
-configs/{paths,experiments}/   # paths/{local,greatlakes}.yaml: DATA_ROOT, CACHE_ROOT, CKPT_ROOT
+configs/{paths,experiments}/   # paths/{local,greatlakes}.yaml: data/cache/ckpt/runs roots (PC_PATHS env picks one)
 container/                     # promptcorrect.def (Apptainer definition)
-docs/                          # container.md, interfaces.md, greatlakes.md
+docs/                          # interfaces.md, demo_sprint.md, container.md
 src/promptcorrect/
-    types.py                   # shared contracts
-    data/  segmenters/  detectors/  perturb/  baselines/  eval/  corrector/  viz/
-scripts/                       # thin CLI entrypoints only (no logic)
-slurm/                         # *.sbatch
-tests/                         # run on DummySegmenter, no GPU
-results/                       # small CSV/PNG only
+    types.py  config.py        # shared contracts; paths, RunConfig, seeding
+    testing.py                 # make_synthetic_objects() for CPU tests (no COCO needed)
+    data/                      # P2: geometry.py (RLE/box helpers), records.py (JSONL I/O; builder is a TODO)
+    segmenters/                # P1: base.py (interface), dummy.py (done), sam3.py / sam21.py (TODO), make_segmenter()
+    detectors/ perturb/ baselines/ eval/ corrector/ viz/   # stubs with owner + TODO signatures
+scripts/                       # thin CLI entrypoints only (no logic); download_hf.py
+slurm/                         # download_data.sbatch (more templates: P1, Day 1)
+tests/                         # CPU tests on DummySegmenter, no GPU (pytest)
+results/                       # small CSV/PNG only (not created yet)
 ```
+
+Local dev: `pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -e ".[dev]" && pytest` (see README).
+`DummySegmenter(objects)` needs only `ObjectRecord`s; use `promptcorrect.testing.make_synthetic_objects()` for fake ones. Its click behaviour is documented in its module docstring. Its IoUs are meaningless scientifically; it exists to test logic.
 
 ## 10. Conventions
 
@@ -214,7 +222,7 @@ results/                       # small CSV/PNG only
 
 ## 12. Status & open questions (update continuously)
 
-**Status (2026-10-23):** repo contains only the initial commit. Container recipe and docs drafted but **untested**. SAM 3 HF access granted. Data not yet downloaded.
+**Status (2026-10-23):** repo scaffold written (types, config, data helpers, `Segmenter` interface + `DummySegmenter`, stubs for other roles; 22 CPU tests pass). Container recipe and docs drafted but **untested**. SAM 3 HF access granted. Data not yet downloaded (`slurm/download_data.sbatch` ready, not yet run). SAM 3 / SAM 2.1 wrappers, detectors, perturbations, metrics and corrector are TODO stubs.
 
 **Known assumptions to verify:**
 - SAM 3 interactive point/box API (`predict_inst`-style predictor) works as expected on A40.
