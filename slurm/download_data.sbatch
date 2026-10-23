@@ -3,7 +3,7 @@
 #SBATCH --partition=standard
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=4G
-#SBATCH --time=12:00:00
+#SBATCH --time=8:00:00
 #SBATCH --output=pc_download-%j.out
 #
 # Downloads COCO 2017, LVIS v1 annotations and the SAM 2.1 checkpoint into the shared scratch dir.
