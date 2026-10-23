@@ -12,7 +12,7 @@ The image holds only dependencies (Python 3.12, PyTorch 2.7 cu126, SAM 3, SAM 2.
 ssh <uniqname>@greatlakes.arc-ts.umich.edu      # UM VPN may be needed off campus; Duo 2FA
 module avail apptainer singularity               # find the module name
 module load apptainer                            # or singularity
-cd /scratch/<ACCOUNT>_root/<ACCOUNT>/<uniqname>
+cd /scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish
 export APPTAINER_CACHEDIR=$PWD/.apptainer-cache APPTAINER_TMPDIR=$PWD/.apptainer-tmp
 mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
 apptainer build --fakeroot test.sif docker://alpine   # works? then use Option A for the real build
@@ -74,13 +74,13 @@ Use the transfer node for big files. Run from inside WSL:
 ```bash
 sha256sum ~/promptcorrect-$DATE.sif | tee ~/promptcorrect-$DATE.sif.sha256
 rsync -avP --partial ~/promptcorrect-$DATE.sif \
-  <uniqname>@greatlakes-xfer.arc-ts.umich.edu:/scratch/<ACCOUNT>_root/<ACCOUNT>/shared_data/eecs542tbn/containers/
+  <uniqname>@greatlakes-xfer.arc-ts.umich.edu:/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn/containers/
 ```
 `--partial` lets you resume if the connection drops. If SSH from your machine is awkward, Globus (personal endpoint on Windows) is the alternative.
 
 On GreatLakes, verify and publish it for the team:
 ```bash
-cd /scratch/<ACCOUNT>_root/<ACCOUNT>/shared_data/eecs542tbn/containers
+cd /scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn/containers
 sha256sum promptcorrect-$DATE.sif          # must match the value printed in WSL
 chmod g+r promptcorrect-$DATE.sif
 ln -sfn promptcorrect-$DATE.sif current.sif
@@ -89,10 +89,10 @@ ln -sfn promptcorrect-$DATE.sif current.sif
 ## 5. Test on a GPU node
 
 ```bash
-srun --account=<ACCOUNT> --partition=spgpu --gres=gpu:1 --cpus-per-task=4 --mem=32G --time=00:30:00 --pty bash
+srun --account=eecs542f26s001_class --partition=spgpu --gres=gpu:1 --cpus-per-task=4 --mem=32G --time=00:30:00 --pty bash
 module load apptainer     # or singularity
-S=/scratch/<ACCOUNT>_root/<ACCOUNT>/shared_data/eecs542tbn
-apptainer exec --nv --bind /scratch/<ACCOUNT>_root/<ACCOUNT> $S/containers/current.sif \
+S=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn
+apptainer exec --nv --bind /scratch/eecs542f26s001_class_root/eecs542f26s001_class $S/containers/current.sif \
     python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ```
 Then run the SAM 3 smoke test (text, box and point prompts on one image) and record what worked in `CLAUDE.md` section 12.

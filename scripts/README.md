@@ -5,6 +5,6 @@ Thin CLI entrypoints only: parse arguments, load a config (`promptcorrect.config
 Run on GreatLakes inside the container, e.g.:
 
 ```bash
-apptainer exec --nv --bind /scratch/<ACCOUNT>_root/<ACCOUNT> --env PYTHONPATH=$PWD/src \
+apptainer exec --nv --bind /scratch/eecs542f26s001_class_root/eecs542f26s001_class --env PYTHONPATH=$PWD/src \
   $SIF python scripts/<script>.py --config configs/experiments/<x>.yaml
 ```

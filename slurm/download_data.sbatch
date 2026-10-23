@@ -9,8 +9,8 @@
 # Downloads COCO 2017, LVIS v1 annotations and the SAM 2.1 checkpoint into the shared scratch dir.
 # Idempotent: re-submitting skips finished steps and resumes partial downloads.
 #
-#   export PC_ROOT=/scratch/<ACCOUNT>_root/<ACCOUNT>/shared_data/eecs542tbn
-#   sbatch --account=<ACCOUNT> slurm/download_data.sbatch
+#   export PC_ROOT=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn
+#   sbatch --account=eecs542f26s001_class slurm/download_data.sbatch
 #
 # SAM 3 / Grounding DINO weights come from Hugging Face: see scripts/download_hf.py (needs HF_TOKEN).
 # Verify the URLs below still work before relying on them (they are from memory of the official sites).

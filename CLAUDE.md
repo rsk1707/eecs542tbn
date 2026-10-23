@@ -156,10 +156,10 @@ Global conventions: boxes are `xyxy` absolute pixels in the original image; mask
 
 - Course account has (per RMP): **GPU 371 h, SPGPU 562 h, Standard 4,053 h, Largemem 1,318 h** (confirm units; ~930 GPU-hours total vs ~150 planned).
 - **SPGPU (A40, 48 GB)** for SAM 3. `gpu` (V100) only for small tests. **Standard** for CPU-only work (eval, perturbation generation, metrics). Don't use Largemem.
-- Never run heavy work on login nodes. Use `sbatch` / `srun`. Always pass `--account=<ACCOUNT>`. Log GPU-hours you use in the team channel.
+- Never run heavy work on login nodes. Use `sbatch` / `srun`. Always pass `--account=eecs542f26s001_class`. Log GPU-hours you use in the team channel.
 - **Storage:** all shared data on `/scratch`, in the owner's (Srikrishnan's) scratch folder, shared with the four teammates via per-user ACLs (`setfacl`, access + default ACLs for all five uniqnames). Do **not** use group permissions (`chmod g+...`): the account `eecs542f26s001_class` is class-wide, so the group is every student.
   ```
-  /scratch/eecs542f26s001_class_root/eecs542f26s001_class/<OWNER_UNIQNAME>/eecs542tbn/
+  /scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn/
       data/        # COCO, LVIS (read-only after download)
       cache/       # features, detections
       ckpt/        # model weights
@@ -170,13 +170,13 @@ Global conventions: boxes are `xyxy` absolute pixels in the original image; mask
 - **Environment = Apptainer container**, not a shared conda env. Build instructions: `docs/container.md`. Code, data and weights are bind-mounted, never baked into the image.
 - Run pattern:
   ```
-  apptainer exec --nv --bind /scratch/<ACCOUNT>_root/<ACCOUNT> \
+  apptainer exec --nv --bind /scratch/eecs542f26s001_class_root/eecs542f26s001_class \
     --env PYTHONPATH=$PWD/src $SIF python scripts/<script>.py --config configs/experiments/<x>.yaml
   ```
 - HF access to SAM 3 is **already granted**. Put your own `HF_TOKEN` in your shell, never in the repo or image. Point `HF_HOME` to scratch.
 - Workflow: code locally -> push to GitHub -> `git pull` on GreatLakes -> run via Slurm.
 
-Placeholders `<ACCOUNT>`, `<uniqname>` to fill in here once confirmed: (TODO)
+Slurm account: `eecs542f26s001_class`. Remaining placeholder: `srikrish` (Srikrishnan's uniqname; appears in `configs/paths/greatlakes.yaml` and the paths above) — to be filled in.
 
 ## 9. Repo layout
 
