@@ -137,17 +137,18 @@ Everyone codes on the **same two days each week** so handoffs happen within a se
 
 ## 7. Shared interfaces (contracts)
 
-Authoritative definitions live in `src/promptcorrect/types.py` once it exists; until then this table is authoritative. Changing a contract requires agreement from all roles that consume it.
+**Full spec: [`docs/interfaces.md`](docs/interfaces.md)** (read it before touching anything that crosses roles). Once `src/promptcorrect/types.py` exists, the code and that doc must agree. Changing a contract requires agreement from all roles that consume it.
 
-| Interface | Owner | Shape |
+| Interface | Owner | Summary |
 |---|---|---|
-| ObjectRecord | P2 | `image_id, ann_id, category, split (seen/unseen), gt_box, gt_mask (RLE)` |
-| Prompt | P4 | `{box: [x0,y0,x1,y1] or None, pos_points: [...], neg_points: [...]}` |
-| Segmenter call | P1 | `segment(image_id, prompt) -> mask_logits, iou_score, presence_score` (reuses cached image features) |
-| Cache layout | P1 | `cache/features/{image_id}.pt` (fp16), `cache/detections/{model}/{image_id}.json` |
-| ResultRow | P3 | `ann_id, method, step, iou, boundary_iou, latency_ms, perturbation_type, severity` |
+| ObjectRecord | P2 | `obj_id ("coco:123"), image_id, source, category_id, category_name, novelty (seen/unseen), gt_box, gt_mask (RLE), area, size_bin, thinness, n_neighbors` |
+| Prompt | P4 | `box (xyxy or None), points [(x, y, label)], mask_logits, origin, perturbation`; severity via `describe(prompt, obj)` |
+| Segmenter | P1 | `set_image(image_id)`, `predict(prompts, multimask) -> [SegOutput(mask_logits, iou_score, presence_score)]`, `detect_text(phrase)`, `to_full_res(logits)` |
+| Cache layout | P1 | `cache/manifest.json`, `cache/features/{backend}/{image_id}.safetensors` (fp16), `cache/detections/{model}/{split}.jsonl` |
+| Results row | P3 | one row per `(obj_id, method, step)`: `iou, boundary_iou`, severity fields, `latency_ms`; Parquet |
+| Run config | P2 | YAML: `run_id, git_commit, seed, backend, train_data, perturbations, max_steps, splits_file` |
 
-Box format is always `xyxy` in absolute pixels. Masks are RLE (COCO format) on disk.
+Global conventions: boxes are `xyxy` absolute pixels in the original image; masks are COCO RLE on disk and low-res logits (`> 0`) in memory; object IDs are strings (`coco:…` / `lvis:…`); JSONL for records, Parquet for results, safetensors for features. One implementation each of `iou`/`boundary_iou`/`match` (P3), `describe` (P4) and `Segmenter` (P1). The interface doc also lists open issues (O1–O13) that need a team decision.
 
 ## 8. Compute: GreatLakes HPC
 
@@ -226,7 +227,8 @@ results/                       # small CSV/PNG only
 - 2026-10-23: Timeline cut from 10 to 6 weeks, ~2 coding days/week; scope reduced to RQ0–RQ4 (stretch list in section 3).
 - 2026-10-23: Apptainer container instead of a shared conda env; built locally (WSL2) if rootless build on GreatLakes isn't available.
 - 2026-10-23: Shared data lives on `/scratch` in a group-writable directory.
-- 2026-10-23: Roles are self-selected via the claim board in section 5. All roles are currently UNCLAIMED. Srikrishnan is doing the initial GreatLakes/container setup and repo scaffold for the whole team regardless of which role they pick.
+- 2026-10-23: Roles are self-selected via the claim board in section 5 (now claimed; see the board). Srikrishnan is doing the initial GreatLakes/container setup and repo scaffold for the whole team.
+- 2026-10-23: Shared formats written up in `docs/interfaces.md` (draft v0.1, from `CV_Project_Revised_Plan.pdf`). Open issues O1–O13 there need team decisions; the revised plan's 10-week schedule is ignored in favour of section 6 here.
 
 ## 13. Keeping this file current
 
