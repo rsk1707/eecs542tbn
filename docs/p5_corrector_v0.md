@@ -1,16 +1,16 @@
 # Corrector v0 (P5, demo sprint item 5)
 
-**Status:** code ready, CPU tests pass on the dummy (`tests/p5/`). Not yet run on GPU.
+**Status:** code ready, CPU tests pass (`tests/p5/`), GPU smoke test passed (samples, train, eval on SAM 3).
 **Owner:** Sharvani (P5). Code: `src/promptcorrect/corrector/`. Scripts: `scripts/p5_*.py`.
 
 ## What v0 is
 
 A small U-Net (about 1.9M parameters) looks at an object-centric crop of the image, the frozen SAM 3 mask and
-the prompt, and predicts a 2-channel **error map**: false positive (mask but not GT) and false negative
-(GT but not mask). A click is then placed with the same rule as the ideal-click simulator, but on the
+the prompt box, and predicts a 2-channel **error map**: false positive (mask but not GT) and false negative
+(GT but not mask). One click is placed with the standard ideal-click convention, but applied to the
 *predicted* error regions. A missed region gets a positive click and an extra region gets a negative one.
 The click goes to the point farthest from the region's boundary. If no predicted error passes the threshold,
-the corrector **abstains**, which is how it can leave good prompts alone (RQ4). SAM 3 is never trained.
+the corrector **abstains**, which is how it leaves good masks alone (RQ4). SAM 3 is never trained.
 
 | Input channel (crop, S x S) | |
 |---|---|
@@ -19,10 +19,23 @@ the corrector **abstains**, which is how it can leave good prompts alone (RQ4). 
 | 4 | `logit > 0` (the mask that is evaluated) |
 | 5 | prompt box |
 | 6 | valid (0 outside the image) |
-| 7-8 | positive / negative click Gaussians (sigma 3 px) |
+| 7-8 | positive / negative click Gaussians (sigma 3 px); empty in v0, reserved for multi-step |
 
 The crop is the prompt box grown by 50% of its size on every side, resized to 128 x 128 without keeping the
 aspect ratio. Loss: BCE + soft Dice per (sample, channel), with pixels outside the image ignored.
+
+## Only real code, no stand-ins
+
+v0 uses only code that exists in the repo: SAM 3 (P1), records and the LVIS-leakage split (P2), IoU,
+Boundary IoU and method names (P3). P4's perturbations and baselines and P3's ideal-click simulator do not exist
+yet, so v0 does **not** use perturbed prompts, baselines or ideal clicks. Training data and evaluation both use
+**clean GT boxes**: the corrector learns SAM 3's own mistakes. When those modules land, they plug in as follows:
+
+| When this lands | Change |
+|---|---|
+| P4 `perturb/` | add perturbed prompts in `samples.py` and `rollout.py` (call P4's generator and `describe()`) |
+| P4 `baselines/` | add `b1_random_k`, `b3_box_refit`, ... as methods in `rollout.py` |
+| P3 ideal-click simulator | add `oracle_clicks` as the upper bound, and click states to the training data (then multi-step) |
 
 ## Sample format (for P1 / P4)
 
@@ -34,64 +47,56 @@ $RUNS_ROOT/<samples run>/
                       #   rgb uint8 [N,3,S,S], logits fp16 [N,S,S], gt bool [N,S,S], valid bool [N,S,S],
                       #   box bool [N,S,S], clicks float32 [N,4,3] = (u, v, label) in crop pixels, label -1 = empty
   meta.jsonl          # one row per sample: shard, row, sample, obj_id, image_id, category, size_bin, origin,
-                      #   pert_type, pert_level, perturbation, box, window (crop xyxy in image pixels), points
-                      #   (image coords), n_clicks, box_iou_in, iou (full-res, vs GT), pred_iou, crop_fp, crop_fn
+                      #   box, window (crop xyxy in image pixels), points (image coords), n_clicks,
+                      #   iou (full-res, vs GT), pred_iou, crop_fp, crop_fn
   records.jsonl       # ObjectRecords of the images used (P2's builder)
-  manifest.json       # settings, chosen image ids, LVIS-val exclusion counts, input hashes, stand-in note
+  manifest.json       # settings, chosen image ids, LVIS-val exclusion counts, input hashes
 ```
 
-Per object, the prompts are the clean GT box plus 2 perturbed boxes (shift / scale / truncate, level uniform in
-[0.05, 0.5]). With probability 0.5 a prompt also contributes a second sample after 1-2 ideal clicks, so the
-click channels are not always empty. Training images are 1,500 COCO train2017 images sampled **after removing
-LVIS-val images** (CLAUDE.md 4.5), with at most 8 objects per image.
-
-## Temporary stand-ins (to replace with P4's code)
-
-P4's perturbations, `describe()` and baselines were still stubs, so `corrector/standins.py` holds minimal
-versions: the 3 perturbations, `box_iou`, and the `b1_random_k` / `b3_box_refit` rules. Every manifest records
-this. **Before any number goes into the report, switch to P4's implementations and rerun.** For the demo
-slide, label the baseline numbers "preliminary, stand-in baselines".
+Training images: 3,000 COCO train2017 images sampled **after removing LVIS-val images** (CLAUDE.md 4.5), at most
+8 objects per image. Checkpoint selection uses 10% of those images held out, so the demo val images are only
+seen in the final eval.
 
 ## Running on GreatLakes
 
-Run from the repo root, after committing your changes (the manifests record the commit and a `dirty` flag):
+From the repo root, after committing (manifests record the commit and a `dirty` flag). One job runs all three
+steps, so there is one queue wait:
 
 ```bash
 export PC_ROOT=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn
-P=configs/paths/greatlakes.yaml
-A=--account=eecs542f26s001_class
-
-# 0. smoke test (~10 GPU-min): tiny versions of all three steps, chained
-j1=$(sbatch --parsable $A --time=00:30:00 --mem=64G --job-name=p5_smoke_samples slurm/run_gpu.sbatch \
-     scripts/p5_make_samples.py --paths $P --run-id smoke_p5_samples --n-images 1500 --max-images 20)
-j2=$(sbatch --parsable $A --time=00:20:00 --dependency=afterok:$j1 --job-name=p5_smoke_train slurm/run_gpu.sbatch \
-     scripts/p5_train_corrector.py --paths $P --run-id smoke_p5_train --samples smoke_p5_samples --epochs 2)
-sbatch $A --time=00:20:00 --dependency=afterok:$j2 --job-name=p5_smoke_eval slurm/run_gpu.sbatch \
-     scripts/p5_eval_corrector.py --paths $P --run-id smoke_p5_eval --train-run smoke_p5_train --max-images 5
-
-# 1-3. the real runs, chained
-j1=$(sbatch --parsable $A --time=03:00:00 --mem=64G --job-name=p5_samples slurm/run_gpu.sbatch \
-     scripts/p5_make_samples.py --paths $P --run-id demo_p5_samples_0 --n-images 1500)
-j2=$(sbatch --parsable $A --time=01:30:00 --mem=64G --dependency=afterok:$j1 --job-name=p5_train slurm/run_gpu.sbatch \
-     scripts/p5_train_corrector.py --paths $P --run-id demo_p5_train_0 --samples demo_p5_samples_0)
-sbatch $A --time=03:00:00 --dependency=afterok:$j2 --job-name=p5_eval slurm/run_gpu.sbatch \
-     scripts/p5_eval_corrector.py --paths $P --run-id demo_p5_eval_0 --train-run demo_p5_train_0
+sbatch --account=eecs542f26s001_class --time=03:00:00 --mem=64G --job-name=p5_all \
+    slurm/run_gpu.sbatch scripts/p5_run_all.py --paths configs/paths/greatlakes.yaml --suffix 0
 ```
 
-Logs go to `<job-name>-<jobid>.out` in the repo root. Delete the `smoke_p5_*` run directories after checking
-them. Run ids are never reused: a script refuses to overwrite an existing run.
+The run ids are `demo_p5_{samples,train,eval}_0`. If the job dies, resubmit the same command: finished steps
+are skipped. Each step can also be run on its own (`scripts/p5_make_samples.py`, `p5_train_corrector.py`,
+`p5_eval_corrector.py`; see their docstrings). Logs: `p5_all-<jobid>.out` in the repo root.
+
+If `objects_val.jsonl` on scratch is not readable (it was mode 600 on 2026-10-25), the eval rebuilds it with
+P2's builder from the COCO val annotations and `splits_demo.json`. The rebuild was checked to be byte-identical
+(sha256 86f4cb3d...), and the manifest records the source.
 
 ## Outputs
 
 | Run | Files |
 |---|---|
 | `demo_p5_samples_0` | shards, `meta.jsonl`, `records.jsonl`, `manifest.json` |
-| `demo_p5_train_0` | `best.pt`, `last.pt`, `history.jsonl`, `final_val.json` (FP/FN AUROC, error-map IoU, click hit rate, abstain rate), `training_curves.png` |
-| `demo_p5_eval_0` | `results.parquet` (one row per object x prompt x method x step), `summary_*.csv`, `iou_by_step.png`, `gain_and_harm.png` |
+| `demo_p5_train_0` | `best.pt`, `last.pt`, `history.jsonl`, `final_val.json` (FP/FN AUROC, error-map IoU, click hit rate, abstain rate, threshold sweep), `training_curves.png` |
+| `demo_p5_eval_0` | `results.parquet` (one row per object x method x step), `summary_final.csv`, `summary_iou_by_step.csv`, `corrector_vs_none.png` |
 
-The eval summary tables are: `final_{all,clean,perturbed,failures<0.75}` (mean IoU before and after, ΔIoU, harm %,
-improved %, success@0.5/0.75, steps used), `iou_by_step_*` (last value carried forward after a method stops),
-and `delta_by_type_level`. Harm uses the shared definition `iou_final < iou_step0 - 0.01`.
+`summary_final.csv` has one row per (group, method). The groups are all objects, objects starting below / above
+IoU 0.75, and each size bin. For each it gives mean IoU before and after, ΔIoU, harm %, improved %, % of objects
+clicked, % positive clicks, and success@0.5/0.75 before and after. Harm uses the shared definition
+`iou_final < iou_step0 - 0.01`.
 
-Known limits of v0: 128 px crops lose fine boundary detail on large objects; checkpoint selection uses
-held-out *train* images, so the demo val images are never seen; one seed.
+If `final_val.json` shows `abstain_rate` near 1, the threshold 0.5 is too strict. Rerun only the eval with a
+threshold from `threshold_sweep`:
+
+```bash
+sbatch --account=eecs542f26s001_class --time=01:00:00 --job-name=p5_eval slurm/run_gpu.sbatch \
+    scripts/p5_eval_corrector.py --paths configs/paths/greatlakes.yaml \
+    --run-id demo_p5_eval_0_t03 --train-run demo_p5_train_0 --threshold 0.3
+```
+
+Known limits of v0: one correction step; 128 px crops lose fine boundary detail on large objects; one seed;
+clean GT boxes only (the 20.9% of objects below IoU 0.75 in the RQ0 ceiling run are where it can help).

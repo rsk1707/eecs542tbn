@@ -1,8 +1,8 @@
 """Slide figures for corrector v0 (matplotlib, light surface). Owner: P5.
 
-Same style and validated categorical order as viz/rq0_figures.py (blue, orange, aqua, yellow), assigned by
-method and kept fixed in every figure; "no correction" is a neutral gray reference line. Every bar carries
-its value as text, and all numbers are also in the summary CSVs.
+Colours are the team's validated categorical order from the RQ0 figures (blue, orange, aqua; adjacent-pair
+CVD dE 9.1), fixed per series in every figure; "no correction" is a neutral gray. Every bar carries its
+value as text (aqua sits below 3:1 contrast on white), and all numbers are also in the summary CSVs.
 """
 
 from __future__ import annotations
@@ -16,20 +16,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from promptcorrect.viz.rq0_figures import GRID, INK, INK2, INK3, SURFACE, _style
-
-COLORS = {"corrector_v0": "#2a78d6", "b3_box_refit": "#eb6834", "oracle_clicks": "#1baf7a",
-          "b1_random_k": "#eda100", "b0_none": INK3}
-LABELS = {"corrector_v0": "Corrector v0", "b3_box_refit": "Box refit", "oracle_clicks": "Ideal clicks (upper bound)",
-          "b1_random_k": "Random clicks", "b0_none": "No correction"}
+SURFACE, INK, INK2, INK3, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#85847f", "#e4e3df"
+BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
+GROUPS = [("all", "All\nobjects"), ("start<0.75", "Start below\nIoU 0.75"), ("size:small", "Small"),
+          ("size:medium", "Medium"), ("size:large", "Large")]
 
 
-def _color(m: str) -> str:
-    return COLORS.get(m, COLORS["corrector_v0"] if m.startswith("corrector_v") else INK2)
-
-
-def _label(m: str) -> str:
-    return LABELS.get(m, m.replace("_", " "))
+def _style():
+    plt.rcParams.update({
+        "figure.facecolor": SURFACE, "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE,
+        "text.color": INK, "axes.labelcolor": INK2, "xtick.color": INK2, "ytick.color": INK2,
+        "axes.edgecolor": GRID, "font.size": 13, "axes.titlesize": 14, "axes.titleweight": "bold",
+        "axes.spines.top": False, "axes.spines.right": False, "axes.titlelocation": "left",
+        "axes.grid": False, "lines.solid_capstyle": "round", "lines.solid_joinstyle": "round",
+    })
 
 
 def _grid(ax, axis="y"):
@@ -38,27 +38,49 @@ def _grid(ax, axis="y"):
     ax.tick_params(length=0)
 
 
+def _spread(ys: list[float], min_gap: float) -> list[float]:
+    """Label positions for line ends: same order as `ys`, at least `min_gap` apart, centred on the data."""
+    order = sorted(range(len(ys)), key=lambda i: ys[i])
+    pos = [ys[i] for i in order]
+    for k in range(1, len(pos)):
+        pos[k] = max(pos[k], pos[k - 1] + min_gap)
+    shift = (sum(ys) - sum(pos)) / len(pos) if pos else 0.0
+    out = [0.0] * len(ys)
+    for k, i in enumerate(order):
+        out[i] = pos[k] + shift
+    return out
+
+
+def _end_labels(ax, x, series: list[tuple[str, float]], gap: float):
+    for (text, _), y in zip(series, _spread([v for _, v in series], gap)):
+        ax.text(x, y, text, color=INK2, va="center", fontsize=11)
+
+
 def training_curves(history: list[dict], out: Path) -> Path:
     _style()
     h = pd.DataFrame(history)
+    x_end = h.epoch.iloc[-1] + 0.3
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.2))
     ax = axes[0]
-    for col, label, c in (("train_loss", "Train", "#2a78d6"), ("val_loss", "Held-out train images", "#eb6834")):
+    loss = (("train_loss", "Train", BLUE), ("val_loss", "Held-out train images", ORANGE))
+    for col, _, c in loss:
         ax.plot(h.epoch, h[col], color=c, linewidth=2)
-        ax.text(h.epoch.iloc[-1] + 0.3, h[col].iloc[-1], label, color=INK2, va="center", fontsize=11)
+    span = float(h[[c for c, _, _ in loss]].max().max() - h[[c for c, _, _ in loss]].min().min()) or 1.0
+    _end_labels(ax, x_end, [(label, h[col].iloc[-1]) for col, label, _ in loss], 0.08 * span)
     ax.set_title("Loss (BCE + Dice)")
     ax.set_xlabel("epoch")
     ax.set_xlim(h.epoch.min(), h.epoch.max() * 1.35)
     _grid(ax)
     ax = axes[1]
-    for col, label, c in (("fn_auroc", "AUROC, missed pixels", "#2a78d6"), ("fp_auroc", "AUROC, extra pixels", "#eb6834"),
-                          ("click_hit_rate", "Click hits a real error", "#1baf7a")):
+    val = (("fn_auroc", "AUROC, missed pixels", BLUE), ("fp_auroc", "AUROC, extra pixels", ORANGE),
+           ("click_hit_rate", "Click hits a real error", AQUA))
+    for col, _, c in val:
         ax.plot(h.epoch, h[col], color=c, linewidth=2)
-        ax.text(h.epoch.iloc[-1] + 0.3, h[col].iloc[-1], f"{label} {h[col].iloc[-1]:.2f}", color=INK2, va="center", fontsize=11)
+    _end_labels(ax, x_end, [(f"{label} {h[col].iloc[-1]:.2f}", h[col].iloc[-1]) for col, label, _ in val], 0.035)
     ax.set_title("Validation (held-out train images)")
     ax.set_xlabel("epoch")
     ax.set_xlim(h.epoch.min(), h.epoch.max() * 1.6)
-    ax.set_ylim(0.5, 1.0)
+    ax.set_ylim(0.0, 1.0)
     _grid(ax)
     fig.tight_layout()
     fig.savefig(out, dpi=200)
@@ -66,52 +88,41 @@ def training_curves(history: list[dict], out: Path) -> Path:
     return out
 
 
-def iou_by_step(tables: dict[str, pd.DataFrame], out: Path) -> Path:
+def corrector_vs_none(tables: dict[str, pd.DataFrame], out: Path, method: str = "corrector_v0") -> Path:
+    """Left: mean IoU without and with the corrector, per object group. Right: share of objects the
+    corrector improved / harmed (IoU change beyond +-0.01), per group."""
     _style()
-    panels = [("iou_by_step_perturbed", "Perturbed boxes"), ("iou_by_step_failures<0.75", "Objects starting below IoU 0.75")]
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.6), sharey=False)
-    for ax, (key, title) in zip(axes, panels):
-        t = tables[key]
-        steps = list(t.columns)
-        for m in t.index:
-            y = t.loc[m].values
-            ax.plot(steps, y, color=_color(m), linewidth=2, marker="o", markersize=7,
-                    markeredgecolor=SURFACE, markeredgewidth=2,
-                    linestyle="--" if m == "oracle_clicks" else "-")
-            ax.text(steps[-1] + 0.08, y[-1], f"{_label(m)} {y[-1]:.3f}", color=INK2, va="center", fontsize=11)
-        ax.set_title(title)
-        ax.set_xticks(steps)
-        ax.set_xlabel("correction step")
-        ax.set_ylabel("mean mask IoU")
-        ax.set_xlim(steps[0] - 0.1, steps[-1] + 1.6)
+    final = tables["final"]
+    groups = [(g, label) for g, label in GROUPS if (g, method) in final.index]
+    x = np.arange(len(groups))
+    w = 0.38
+    fig, axes = plt.subplots(1, 2, figsize=(14, 4.8))
+
+    def bars(ax, xs, vals, color, fmt):
+        ax.bar(xs, vals, width=w, color=color, edgecolor=SURFACE, linewidth=2)
+        for xi, v in zip(xs, vals):
+            ax.text(xi, v, fmt.format(v), ha="center", va="bottom", color=INK, fontsize=10.5)
+
+    ax = axes[0]
+    bars(ax, x - w / 2, [final.loc[(g, "b0_none"), "iou_final"] for g, _ in groups], INK3, "{:.3f}")
+    bars(ax, x + w / 2, [final.loc[(g, method), "iou_final"] for g, _ in groups], BLUE, "{:.3f}")
+    ax.set_title("Mean mask IoU (clean GT box → SAM 3)")
+    ax.set_ylim(0, 1.15)
+    ax.legend(handles=[plt.Rectangle((0, 0), 1, 1, color=INK3), plt.Rectangle((0, 0), 1, 1, color=BLUE)],
+              labels=["No correction", "Corrector v0 (1 click)"], frameon=False, loc="upper left", ncols=2)
+    ax = axes[1]
+    imp = [final.loc[(g, method), "improved_pct"] for g, _ in groups]
+    harm = [final.loc[(g, method), "harm_pct"] for g, _ in groups]
+    bars(ax, x - w / 2, imp, BLUE, "{:.1f}%")
+    bars(ax, x + w / 2, harm, ORANGE, "{:.1f}%")
+    ax.set_title("Objects changed by the corrector")
+    ax.set_ylim(0, max(max(imp), max(harm), 10.0) * 1.3)
+    ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0f}%")
+    ax.legend(handles=[plt.Rectangle((0, 0), 1, 1, color=BLUE), plt.Rectangle((0, 0), 1, 1, color=ORANGE)],
+              labels=["Improved (> +0.01)", "Harmed (< −0.01)"], frameon=False, loc="upper left", ncols=2)
+    for ax in axes:
+        ax.set_xticks(x, [label for _, label in groups])
         _grid(ax)
-    fig.tight_layout()
-    fig.savefig(out, dpi=200)
-    plt.close(fig)
-    return out
-
-
-def gain_and_harm(tables: dict[str, pd.DataFrame], out: Path) -> Path:
-    """Left: mean IoU change on perturbed boxes. Right: share of clean GT-box prompts made worse (RQ4)."""
-    _style()
-    methods = [m for m in tables["final_perturbed"].index if m != "b0_none"]
-    panels = [("final_perturbed", "delta", "Mean IoU change, perturbed boxes", "{:+.3f}"),
-              ("final_clean", "harm_pct", "Clean GT boxes made worse (IoU −0.01)", "{:.1f}%")]
-    fig, axes = plt.subplots(1, 2, figsize=(13, 0.7 * len(methods) + 2.2), sharey=True)
-    y = np.arange(len(methods))[::-1]
-    for ax, (key, col, title, fmt) in zip(axes, panels):
-        vals = [float(tables[key].loc[m, col]) for m in methods]
-        ax.barh(y, vals, height=0.5, color=[_color(m) for m in methods], edgecolor=SURFACE, linewidth=1.5)
-        span = max(abs(v) for v in vals) or 1.0
-        for yi, v in zip(y, vals):
-            ax.text(v + (span * 0.02 if v >= 0 else -span * 0.02), yi, fmt.format(v), va="center",
-                    ha="left" if v >= 0 else "right", color=INK, fontsize=12)
-        ax.axvline(0, color=INK3, linewidth=1)
-        lo = min(0.0, min(vals))
-        ax.set_xlim(lo * 1.4 - (span * 0.05 if lo < 0 else 0), max(0.0, max(vals)) * 1.35 + span * 0.05)
-        ax.set_title(title)
-        _grid(ax, "x")
-    axes[0].set_yticks(y, [_label(m) for m in methods])
     fig.tight_layout()
     fig.savefig(out, dpi=200)
     plt.close(fig)

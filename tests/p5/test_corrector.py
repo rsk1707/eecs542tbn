@@ -8,12 +8,11 @@ from promptcorrect.corrector.clicks import click_hits, propose_click
 from promptcorrect.corrector.crops import (box_mask, click_heatmaps, clicks_to_crop, crop_object, crop_to_image,
                                            crop_window, image_to_crop)
 from promptcorrect.corrector.dataset import load_samples, split_by_image
-from promptcorrect.corrector.figures import gain_and_harm, iou_by_step, training_curves
+from promptcorrect.corrector.figures import corrector_vs_none, training_curves
 from promptcorrect.corrector.losses import error_map_loss
 from promptcorrect.corrector.model import IN_CHANNELS, CorrectorNet, build_inputs, error_targets, load_checkpoint
 from promptcorrect.corrector.rollout import run_rollouts, summarize
 from promptcorrect.corrector.samples import generate_samples
-from promptcorrect.corrector.standins import PERTURBATIONS, box_iou, perturb_box
 from promptcorrect.corrector.train import TrainConfig, auroc, evaluate, train
 from promptcorrect.data.geometry import rle_decode
 from promptcorrect.segmenters.dummy import DummySegmenter
@@ -57,15 +56,6 @@ def test_click_heatmaps_peak_and_padding():
     assert h.shape == (1, 2, 64, 64)
     assert h[0, 0, 19, 9] > 0.9 and h[0, 1, 4, 29] > 0.9 and h[0, 0, 4, 29] < 1e-3
     assert click_heatmaps(torch.full((1, 4, 3), -1.0), 16).abs().sum() == 0
-
-
-def test_perturbations_reduce_box_iou():
-    rng = np.random.default_rng(0)
-    box = [100.0, 100.0, 200.0, 180.0]
-    for kind in PERTURBATIONS:
-        ious = [np.mean([box_iou(perturb_box(box, kind, lv, rng, (480, 640))[0], box) for _ in range(20)])
-                for lv in (0.1, 0.3, 0.5)]
-        assert ious[0] > ious[1] > ious[2], (kind, ious)
 
 
 def test_model_overfits_one_batch():
@@ -114,34 +104,35 @@ def test_full_chain_on_dummy(tmp_path):
     objects = make_synthetic_objects(n_images=4, objects_per_image=2, size=(120, 160), seed=0)
     seg = DummySegmenter(objects)
     load = _image_loader(objects)
-    stats = generate_samples(seg, objects, load, tmp_path / "samples", n_perturbed=2, click_state_prob=1.0,
-                             crop_size=32, shard_size=10, log_every=0)
-    assert stats["n_samples"] == stats["states"]["step0"] + stats["states"]["clicks"]
-    assert stats["states"]["step0"] == len(objects) * 3 and stats["n_shards"] >= 2
+    stats = generate_samples(seg, objects, load, tmp_path / "samples", crop_size=32, shard_size=3, log_every=0)
+    assert stats["n_samples"] == len(objects) and stats["n_shards"] >= 2
 
     ds = load_samples(tmp_path / "samples")
-    assert len(ds) == stats["n_samples"] and ds.rgb.shape[-1] == 32
-    assert (ds.clicks[:, :, 2] >= 0).any()
+    assert len(ds) == len(objects) and ds.rgb.shape[-1] == 32
+    assert (ds.clicks[:, :, 2] == -1).all()  # v0: no click states
+    m = ds.meta[0]
+    assert m["origin"] == "gt" and m["box"] == list(objects[0].gt_box) and 0 < m["iou"] < 1
     tr, va = split_by_image(ds, val_frac=0.5)
     assert not ({ds.meta[i]["image_id"] for i in tr} & {ds.meta[i]["image_id"] for i in va})
 
-    cfg = TrainConfig(epochs=2, batch_size=8, base=8, amp=False, click_eval_samples=10)
+    cfg = TrainConfig(epochs=2, batch_size=4, base=8, amp=False, click_eval_samples=10)
     result = train(ds.subset(tr), ds.subset(va), cfg, tmp_path / "train", "cpu")
     assert len(result["history"]) == 2 and (tmp_path / "train" / "best.pt").exists()
     model, _ = load_checkpoint(tmp_path / "train" / "best.pt")
     metrics = evaluate(model, ds.subset(va), cfg, "cpu")
     assert {"fp_auroc", "fn_auroc", "click_hit_rate", "abstain_rate"} <= metrics.keys()
 
-    df = run_rollouts(seg, model, objects, load, run_id="test", steps=2, crop_size=32, threshold=0.0,
-                      log_every=0)
-    assert set(df.method) == {"b0_none", "corrector_v0", "b1_random_k", "b3_box_refit", "oracle_clicks"}
-    assert df.groupby(["obj_id", "prompt_id", "method", "step"]).size().max() == 1
-    assert df.step.max() <= 2 and df.prompt_id.nunique() >= 4
-    oracle = df[df.method == "oracle_clicks"].groupby(["obj_id", "prompt_id"]).iou
-    assert (oracle.max() >= oracle.first() - 1e-9).all()
+    # threshold 0 forces a click on every object, so the step-1 path runs
+    df = run_rollouts(seg, model, objects, load, run_id="test", steps=1, crop_size=32, threshold=0.0, log_every=0)
+    assert set(df.method) == {"b0_none", "corrector_v0"}
+    assert df.groupby(["obj_id", "method", "step"]).size().max() == 1
+    assert (df[df.method == "b0_none"].step == 0).all() and (df[df.method == "corrector_v0"].step == 1).any()
+    step0 = df[df.step == 0].pivot_table(index="obj_id", columns="method", values="iou")
+    assert (step0.b0_none == step0.corrector_v0).all()
 
-    tables = summarize(df, steps=2)
-    assert "final_clean" in tables and "corrector_v0" in tables["final_perturbed"].index
-    for fig in (training_curves(result["history"], tmp_path / "c.png"), iou_by_step(tables, tmp_path / "s.png"),
-                gain_and_harm(tables, tmp_path / "g.png")):
+    tables = summarize(df, steps=1)
+    final = tables["final"]
+    assert ("all", "corrector_v0") in final.index and ("start>=0.75", "b0_none") in final.index
+    assert final.loc[("all", "b0_none"), "harm_pct"] == 0 and final.loc[("all", "corrector_v0"), "clicked_pct"] == 100
+    for fig in (training_curves(result["history"], tmp_path / "c.png"), corrector_vs_none(tables, tmp_path / "v.png")):
         assert fig.stat().st_size > 0

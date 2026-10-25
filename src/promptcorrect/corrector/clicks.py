@@ -1,9 +1,10 @@
-"""Predicted error maps -> one corrective click, with the same rule as the ideal-click simulator. Owner: P5.
+"""Predicted error maps -> one corrective click. Owner: P5.
 
-The oracle (experiments/rq0.py `oracle_click`) clicks in the larger true error region at the point farthest
-from that region's boundary. Here the regions are the corrector's thresholded predictions instead of the
-truth: pick the channel with more predicted error mass (FN -> positive click, FP -> negative click), take its
-largest connected component (by probability mass), click at the point farthest from its boundary. If no
+The rule is the standard ideal-click convention (RITM/SimpleClick; docs/demo_sprint.md: click at the point
+farthest from the boundary of the largest error region), applied to the corrector's thresholded
+*predictions* instead of the truth: pick the channel with more predicted error mass (FN -> positive click,
+FP -> negative click), take its largest connected component (by probability mass), click at the point
+farthest from its boundary. If no
 pixel passes the threshold, or the region is tiny, the corrector abstains: this is what lets it leave good
 prompts alone (RQ4).
 """

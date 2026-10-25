@@ -1,6 +1,6 @@
 """Corrector v0 end to end in ONE Slurm job (one queue wait instead of three): samples -> train -> eval.
 
-    sbatch --account=eecs542f26s001_class --time=06:00:00 --mem=64G --job-name=p5_all \
+    sbatch --account=eecs542f26s001_class --time=03:00:00 --mem=64G --job-name=p5_all \
         slurm/run_gpu.sbatch scripts/p5_run_all.py --paths configs/paths/greatlakes.yaml --suffix 0
 
 Run ids are demo_p5_{samples,train,eval}_<suffix>. A step whose output already exists is skipped, so a job
