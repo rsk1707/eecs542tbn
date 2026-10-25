@@ -234,7 +234,7 @@ boundary_iou(pred, gt, dilation_ratio=0.02) -> float
 - Empty prediction → 0. Empty GT → `ValueError` (such objects are filtered out of the records).
 - Boundary IoU follows Cheng et al. (CVPR 2021) and the official `boundary-iou-api`: boundary width `d = round(0.02 × image diagonal)`, minimum 1 px; checked to give identical boundaries to the official OpenCV code.
 
-### `match` (decided by P3, implementation in progress)
+### `match` (decided by P3, implemented in `src/promptcorrect/eval/matching.py`)
 
 ```python
 @dataclass
@@ -250,6 +250,17 @@ match(pred_masks, gt_masks, ignore_masks=(), min_iou=0.1, ignore_frac=0.5) -> Ma
 - A prediction is ignored if at least `ignore_frac` of its area lies inside the union of `ignore_masks` (COCO-style crowd handling). P3 builds the ignore masks from the original COCO annotations: every annotation of the image whose `obj_id` is **not** in the object records (crowds and size-filtered objects). The filter rule itself therefore lives only in P2's record builder (see O1).
 - Matching runs per `(image_id, phrase)`: detections for a phrase are matched only to GT objects of that category (detections are exported for GT-present phrases only, O9).
 - Used for the text path (secondary setting) **and** for detector boxes: each detection box is run through the segmenter and its mask is matched to GT, which tells us which GT object a detection belongs to.
+
+### Ideal clicks (P3, `src/promptcorrect/eval/oracle_clicks.py`)
+
+```python
+ideal_click(pred, gt, clicked=()) -> (x, y, label) | None
+run_oracle(segmenter, prompt, gt, max_clicks=5, start=None, use_prev_mask=True) -> OracleTrace  # ious, pred_ious, latency_ms, clicks
+noc(ious, thr, max_clicks) -> int; best_so_far(ious) -> list[float]
+```
+- RITM / SimpleClick rule: distance-transform the false-negative and false-positive regions (image border counts as boundary); click at the deepest pixel of whichever is deeper (positive for false negative, negative for false positive; ties go negative); already-clicked pixels are excluded. P5's click target uses the same function.
+- Clicks are added to the starting prompt (the box stays). With `use_prev_mask` the previous low-res logits go into `Prompt.mask_logits`, as in SAM's interactive mode.
+- IoU is not always monotone in clicks: report `best_so_far` for headroom curves and the raw IoU for harm. NoC counts 0 when the starting prompt already reaches the threshold; not reached → `max_clicks + 1`, reported with the not-reached rate.
 
 ---
 
