@@ -6,19 +6,33 @@ build-backend = "setuptools.build_meta"
 name = "promptcorrect"
 version = "0.1.0"
 description = "Learning to correct prompts for frozen segmentation foundation models (EECS 542)"
-requires-python = ">=3.10"
+# 3.11 is the floor (hashlib.file_digest in data/prepare.py); 3.12 is the container's Python
+# (Ubuntu 24.04) and what P2 develops on. Both are covered; newer versions are untested.
+requires-python = ">=3.11,<3.13"
+
+# Upper bounds only where a package is known to break across majors (the same bounds P2 uses in
+# requirements-p2.txt); everything else is lower-bound only, so installing this package inside the
+# container (torch 2.7.0, latest pandas/scipy/...) never forces a downgrade.
 dependencies = [
-    "numpy",
-    "scipy",
-    "pyyaml",
-    "pandas",
-    "pyarrow",
-    "pycocotools",
-    "torch",
+    "numpy>=1.26,<3",
+    "scipy>=1.11",
+    "pyyaml>=6,<7",
+    "pycocotools>=2.0.7,<3",
+    "Pillow>=10,<13",
+    "pandas>=2.1",
+    "pyarrow>=14",
+    "torch>=2.7",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+# Model jobs on GreatLakes (already in the container). Not needed for laptop tests.
+gpu = [
+    "torchvision>=0.22",
+    "transformers>=4.51,<5",
+    "huggingface_hub>=0.23",
+    "safetensors>=0.4",
+]
+dev = ["pytest>=8,<10"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

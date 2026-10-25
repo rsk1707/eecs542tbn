@@ -9,6 +9,8 @@ A small corrector network looks at a frozen segmenter's (SAM 3) current mask and
 
 ## Local setup (laptop, no GPU needed)
 
+Requires Python 3.11 or 3.12 (the container uses 3.12).
+
 ```bash
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu

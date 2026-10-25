@@ -41,10 +41,11 @@ From: ubuntu:24.04
     SAM2_BUILD_CUDA=0 pip install --no-cache-dir "git+https://github.com/facebookresearch/sam2.git"
 
     # Project dependencies
+    # Version bounds must match pyproject.toml (transformers 5 breaks P2's Grounding DINO code).
     pip install --no-cache-dir \
-        pycocotools lvis opencv-python-headless scipy scikit-image \
-        pandas pyarrow safetensors matplotlib pyyaml tqdm pytest \
-        transformers huggingface_hub accelerate timm einops
+        "numpy>=1.26,<3" "scipy>=1.11" "pyyaml>=6,<7" "pycocotools>=2.0.7,<3" "Pillow>=10,<13" \
+        "pandas>=2.1" "pyarrow>=14" "transformers>=4.51,<5" "huggingface_hub>=0.23" "safetensors>=0.4" \
+        "pytest>=8,<10" lvis opencv-python-headless scikit-image matplotlib tqdm accelerate timm einops
 
 %test
     python -c "import torch, pycocotools, cv2; print('torch', torch.__version__)"
