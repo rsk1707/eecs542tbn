@@ -19,6 +19,9 @@ H, W = 120, 160
 
 
 class FakeTransforms:
+    max_hole_area = 256.0  # SAM 3's default
+    max_sprinkle_area = 0.0
+
     def postprocess_masks(self, masks, orig_hw):
         return F.interpolate(masks.float(), orig_hw, mode="bilinear", align_corners=False)
 
@@ -185,6 +188,14 @@ def test_track_presence_off(monkeypatch):
     s = _make(monkeypatch, track_presence=False)
     s.detect_text("person")
     assert s.last_presence is None
+
+
+def test_hole_filling_off_by_default_and_switchable(monkeypatch):
+    s = _make(monkeypatch)
+    tr = s.model.inst_interactive_predictor._transforms
+    assert tr.max_hole_area == 0.0 and tr.max_sprinkle_area == 0.0
+    s2 = _make(monkeypatch, fill_small_holes=True)
+    assert s2.model.inst_interactive_predictor._transforms.max_hole_area == 256.0
 
 
 def test_factory_builds_sam3(monkeypatch):

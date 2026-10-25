@@ -72,6 +72,25 @@ def test_detect_text(seg):
     assert 0 < seg.last_presence <= 1
 
 
+def test_latency_report(seg):
+    import time
+
+    import torch
+
+    def timed(prompts, n=10):
+        seg.predict(prompts)  # warm-up
+        torch.cuda.synchronize(); t = time.time()
+        for _ in range(n):
+            seg.predict(prompts)
+        torch.cuda.synchronize()
+        return (time.time() - t) / n * 1000
+
+    one = timed([Prompt(box=BOX)])
+    many = timed([Prompt(box=BOX)] * 32)
+    print(f"LATENCY single box: {one:.1f} ms/call | 32 boxes in one call: {many:.1f} ms ({many / 32:.1f} ms/box)")
+    assert one < 1000 and many < 5000
+
+
 def test_text_call_does_not_break_prompts(seg):
     seg.detect_text("bed")
     out = seg.predict([Prompt(box=BOX)])[0]

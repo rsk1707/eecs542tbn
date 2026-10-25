@@ -10,8 +10,11 @@ the pinned commit. Facts this wrapper relies on:
   explicitly instead of trusting the shape.
 * Several boxes for the same image go through ONE call (rows are independent objects); points need one
   call per prompt.
-* Full-res masks come from `_transforms.postprocess_masks`, which also fills holes of up to 256 low-res
-  pixels before a bilinear resize. `to_full_res` reuses it so results match SAM 3's own masks exactly.
+* Full-res masks come from `_transforms.postprocess_masks` (bilinear resize). SAM 3 can also fill holes of up
+  to 256 low-res pixels first, but that step compiles a Triton helper with gcc and needs Python.h, which
+  GreatLakes' system Python lacks: it failed on every call (a gcc launch plus a warning) and the step was
+  skipped. We therefore disable it explicitly (`fill_small_holes=False`, same masks, no failed compiles).
+  `to_full_res` reuses the same function so results match SAM 3's own masks exactly.
 * The predicted IoU is overconfident (e.g. 0.93 predicted vs 0.58 real for an ambiguous point prompt) and
   multimask ordering is unreliable; "best of multimask by predicted IoU" is a weak baseline.
 * Text path: `Sam3Processor.set_text_prompt` returns detections in no particular order, with boxes that can
@@ -47,10 +50,12 @@ class Sam3Segmenter(Segmenter):
         confidence_threshold: float = 0.5,
         track_presence: bool = True,
         box_batch_size: int = 32,
+        fill_small_holes: bool = False,
     ):
         """`ckpt_path` defaults to <ckpt_root>/sam3/sam3.pt; `image_dirs` default to COCO val2017 then
         train2017 under <data_root>/coco (configs/paths, PC_PATHS). `track_presence=False` skips the
-        extra grounding pass in `detect_text` (about 2x faster text calls)."""
+        extra grounding pass in `detect_text` (about 2x faster text calls). `fill_small_holes=True` re-enables
+        SAM 3's hole filling (default in SAM 3); it needs Python development headers (Python.h) to compile."""
         from sam3.model.sam3_image_processor import Sam3Processor
         from sam3.model_builder import build_sam3_image_model
 
@@ -66,6 +71,11 @@ class Sam3Segmenter(Segmenter):
         self.model = build_sam3_image_model(
             checkpoint_path=str(self.ckpt), load_from_HF=False, enable_inst_interactivity=True, device=self.device)
         self.processor = Sam3Processor(self.model, device=self.device, confidence_threshold=confidence_threshold)
+        self.fill_small_holes = fill_small_holes
+        if not fill_small_holes:
+            transforms = self.model.inst_interactive_predictor._transforms
+            transforms.max_hole_area = 0.0
+            transforms.max_sprinkle_area = 0.0
         self._state: dict | None = None
         self._hw: tuple[int, int] = (0, 0)
 
@@ -154,7 +164,7 @@ class Sam3Segmenter(Segmenter):
 
     def to_full_res(self, logits: torch.Tensor) -> torch.Tensor:
         """Low-res logits [h, w] -> logits [H, W] at the original image size (CPU tensor), using SAM 3's own
-        postprocessing (small-hole filling + bilinear resize) so it matches `predict_inst`'s masks."""
+        postprocessing function so it matches `predict_inst`'s masks (hole filling only if enabled)."""
         H, W = self._hw
         if tuple(logits.shape) == (H, W):
             return logits
