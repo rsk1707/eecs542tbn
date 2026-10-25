@@ -125,6 +125,7 @@ class Segmenter:
   - `presence_score` (O6): SAM 3's presence score exists only on the text path (`presence_logit_dec`, a per-image, per-phrase scalar, 0.98-0.99 in the smoke test). It is multiplied into the detection `scores` and not stored. `predict()` always returns `presence_score=None`. `Sam3Segmenter.detect_text` reads the raw value with one extra pass and exposes it as `last_presence`. The corrector must not assume a presence input at every step.
   - `detect_text(phrase, threshold=None)` returns detections **sorted by score, highest first**, boxes clipped to the image (SAM 3 can return slightly negative coordinates), masks as RLE. The default confidence threshold is 0.5 and matters: at 0.1 the smoke test saw 3 / 25 / 1 detections instead of 1 / 5 / 1, and a class with 3 GT instances produced 5 detections at 0.5 (extras need `match`).
 - **[Open]** O7 (cache scope and cache-miss behaviour; the demo runs the encoder live: about 0.1 s per image after warm-up, peak 5 GB GPU memory).
+- **[Measured with `Sam3Segmenter`, A40, hole filling off, 2026-10-25]** decoder: 5.8 ms per single-box call; 61 ms for 32 boxes in one call (1.9 ms per box). The earlier 28 ms figure included a failed gcc launch on every call. Image encode about 0.1 s. A full sensitivity sweep of ~45k boxes takes minutes, not hours.
 
 ---
 

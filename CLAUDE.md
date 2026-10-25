@@ -229,7 +229,7 @@ Local dev: `pip install torch --index-url https://download.pytorch.org/whl/cpu &
 **Status (2026-10-23):** repo scaffold written (types, config, data helpers, `Segmenter` interface + `DummySegmenter`, stubs for other roles; 22 CPU tests pass). Environment: `slurm/setup_env.sbatch` (shared venv) written but built on GreatLakes (Python 3.12, torch 2.10.0+cu126, check_env all OK, CUDA available on an A40); SAM 3 smoke test passed 23/23; the container recipe is unusable there (no fakeroot). SAM 3 HF access granted. Data not yet downloaded (`slurm/download_data.sbatch` ready, not yet run). SAM 3 / SAM 2.1 wrappers, detectors, perturbations, metrics and corrector are TODO stubs.
 
 **Known assumptions to verify:**
-- ~~SAM 3 interactive point/box API works on A40.~~ **Verified 2026-10-25** (smoke test, 23/23 checks): see `docs/interfaces.md` section 3 for the measured facts (288x288 low-res logits, presence only on the text path, ~0.1 s encode, ~30 ms per decoder call, 5 GB GPU memory).
+- ~~SAM 3 interactive point/box API works on A40.~~ **Verified 2026-10-25** (smoke test, 23/23 checks): see `docs/interfaces.md` section 3 for the measured facts (288x288 low-res logits, presence only on the text path, ~0.1 s encode, 5.8 ms per single-box decoder call and 1.9 ms per box when batched, 5 GB GPU memory; whole demo experiments take minutes of GPU time).
 - Per-image feature cache size (estimate ~10 MB fp16; unmeasured). Check against scratch quota.
 - LLMDet's mmdet-based install may not fit the shared environment; Grounding DINO via `transformers` is the fallback.
 - COCO <-> LVIS category mapping needs a hand check.
