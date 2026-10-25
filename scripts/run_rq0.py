@@ -5,7 +5,8 @@
 
 Needs (all from the Day 2 jobs in docs/environment.md): objects_val.jsonl, the COCO val annotations,
 and the Grounding DINO / SAM 3 text detections. `--sources gt_box` runs the ceiling only and needs no
-detections and no `match`. Writes $RUNS_ROOT/<run-id>/{results.parquet, queries.parquet, config.yaml,
+detections and no `match`. Matching uses P3's `match` once it is implemented, otherwise a stand-in with
+the same contract (experiments/match_fallback.py); rq0_manifest.json records which one. Writes $RUNS_ROOT/<run-id>/{results.parquet, queries.parquet, config.yaml,
 rq0_manifest.json, summary_*.csv}; prints the headline tables.
 """
 
@@ -65,8 +66,7 @@ def main() -> None:
         df, queries = run_rq0(segmenter, records, annotations, gd, sam, run_id=args.run_id, sources=tuple(args.sources),
                               oracle_steps=args.oracle_steps, boundary_all=args.boundary_all, max_images=args.max_images)
     except NotImplementedError as e:
-        raise SystemExit(f"{e}\nmatch() (P3, eval/matching.py) is not implemented yet. "
-                         "Run with --sources gt_box for the ceiling only.") from e
+        raise SystemExit(f"{e}\nA function the study needs is still a stub (see the message above).") from e
     seconds = time.time() - t0
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -77,7 +77,7 @@ def main() -> None:
     manifest = {
         "sources": args.sources, "oracle_sources": [s for s in ORACLE_SOURCES if s in args.sources],
         "oracle_steps": args.oracle_steps, "max_images": args.max_images, "seconds": round(seconds, 1),
-        "n_rows": len(df), "n_objects": int(df.obj_id.nunique()), "n_images": int(df.image_id.nunique()),
+        "match_impl": df.attrs.get("match_impl"), "n_rows": len(df), "n_objects": int(df.obj_id.nunique()), "n_images": int(df.image_id.nunique()),
         "dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], text=True).strip()),
         "inputs": {"records_sha256": file_sha256(records_file), "annotations_sha256": file_sha256(ann_file),
                    **({"grounding_dino_sha256": file_sha256(gd_file)} if need_gd else {}),

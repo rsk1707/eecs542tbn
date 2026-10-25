@@ -34,6 +34,7 @@ from promptcorrect.data.records import annotation_mask
 from promptcorrect.eval import matching
 from promptcorrect.eval.methods import check_method
 from promptcorrect.eval.metrics import boundary_iou, iou
+from promptcorrect.experiments import match_fallback
 from promptcorrect.types import ObjectRecord, Prompt
 
 SOURCES = ("gt_box", "grounding_dino_box", "sam3_text_box", "sam3_text_mask")
@@ -56,6 +57,17 @@ def oracle_click(pred: np.ndarray, gt: np.ndarray):
     dist = ndimage.distance_transform_edt(np.pad(biggest, 1))[1:-1, 1:-1]
     y, x = np.unravel_index(np.argmax(dist), dist.shape)
     return float(x), float(y), label
+
+
+def resolve_match():
+    """P3's `match` if implemented, else the P1 stand-in with the same contract. Returns (function, name)."""
+    try:
+        matching.match([], [])
+    except NotImplementedError:
+        return match_fallback.match, "experiments.match_fallback (P1 stand-in, same contract)"
+    except Exception:  # P3's version exists but dislikes empty input: still use it
+        pass
+    return matching.match, "eval.matching.match (P3)"
 
 
 def load_detections(path: str | Path) -> dict[tuple[int, str], list[dict]]:
@@ -152,6 +164,7 @@ def run_rq0(segmenter, records, annotations, grounding_dino, sam3_text, *, run_i
         anns_by_image[ann["image_id"]].append(ann)
 
     rows, queries, t0 = _Rows(run_id, boundary_all), [], time.time()
+    match, match_impl = resolve_match()
     for n, image_id in enumerate(image_ids, 1):
         objs = by_image[image_id]
         h, w = objs[0].gt_mask["size"]
@@ -182,7 +195,7 @@ def run_rq0(segmenter, records, annotations, grounding_dino, sam3_text, *, run_i
                 else:
                     pred_masks, pious, ms = _predict_boxes(segmenter, [d["box"] for d in dets], ORIGIN[source])
                 if pred_masks:
-                    res = matching.match(pred_masks, gts, ignore_masks=ignore)
+                    res = match(pred_masks, gts, ignore_masks=ignore)
                     pairs = {g: p for p, g, _ in res.pairs}
                     n_fp, n_ign = len(res.unmatched_preds), len(res.ignored_preds)
                 else:
@@ -204,4 +217,6 @@ def run_rq0(segmenter, records, annotations, grounding_dino, sam3_text, *, run_i
                                      oracle_steps, common)
         if log_every and n % log_every == 0:
             print(f"[rq0] {n}/{len(image_ids)} images, {len(rows.rows)} rows, {time.time() - t0:.0f}s", flush=True)
-    return pd.DataFrame(rows.rows), pd.DataFrame(queries)
+    df = pd.DataFrame(rows.rows)
+    df.attrs["match_impl"] = match_impl
+    return df, pd.DataFrame(queries)
