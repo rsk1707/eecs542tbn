@@ -1,7 +1,7 @@
 # Demo sprint plan (proposal presentation, 6-7 min)
 
 **Status:** draft v0.1, 2026-10-23. Budget: about 1 working day per person, spread over 2.5 days (roughly 3h + 3h + 2h each). Srikrishnan also does the setup tonight.
-Companion docs: `CLAUDE.md` (project context), `docs/interfaces.md` (formats), `docs/container.md` (image build).
+Companion docs: `CLAUDE.md` (project context), `docs/interfaces.md` (formats), `docs/environment.md` (Python environment).
 
 ## Goal
 
@@ -28,13 +28,13 @@ Show **preliminary RQ0 numbers on real data**, plus a first look at the correcto
 
 | When | What |
 |---|---|
-| **Day 0 (tonight)** | Srikrishnan: scaffold on `main`, data download job running, container build + upload started. Others: read `CLAUDE.md` and `docs/interfaces.md`, raise objections to the defaults above. |
+| **Day 0 (tonight)** | Srikrishnan: scaffold on `main`, data download job running, environment build started. Others: read `CLAUDE.md` and `docs/interfaces.md`, raise objections to the defaults above. |
 | **Day 1** | Everyone builds their module against the dummy segmenter on a laptop. Merge to `main` by end of day. Srikrishnan delivers the SAM wrapper and Slurm templates. |
 | **Day 2** | Integration. First real numbers on ~100 images by midday, then scale to 500. Generate v0 training samples, train v0. **Freeze experiments at the end of Day 2.** |
 | **Day 3 (half day)** | Figures, slides, two timed rehearsals. No new experiments. |
 
 **Gates**
-- **G0 (end of tonight):** scaffold merged; `sbatch` download submitted; container build started.
+- **G0 (end of tonight):** scaffold merged; `sbatch` download submitted; environment build started.
 - **G1 (Day 1 midday):** SAM 3 smoke test result (text + box + point prompts on one image, on SPGPU). If the interactive path doesn't work by Day 1 evening, **fall back to SAM 2.1** for the demo (no `detect_text`; text-path numbers dropped, detector-box numbers kept).
 - **G2 (Day 1 end):** every module merged with passing CPU tests on the dummy. Srikrishnan runs one image through the whole chain.
 - **G3 (Day 2 midday):** first real RQ0 numbers on ~100 images look sane (clean GT-box IoU is high; perturbed IoU drops as severity grows).
@@ -45,7 +45,7 @@ Show **preliminary RQ0 numbers on real data**, plus a first look at the correcto
 **Tonight (~3h)**
 1. Scaffold the repo: `pyproject.toml`, `configs/paths/{local,greatlakes}.yaml`, `src/promptcorrect/` package, `types.py` from `docs/interfaces.md`, `Segmenter` base class and `DummySegmenter` (with the click response above), CPU test skeleton. Push to `main`.
 2. GreatLakes: fill in `srikrish` in `CLAUDE.md` and `configs/paths/greatlakes.yaml`; create the shared dir and share it with teammates via `setfacl` (not group write); submit the download job on `standard`: COCO val2017 + annotations first, then train2017, LVIS v1 annotations, SAM 2.1 checkpoint, SAM 3 weights (your HF token), Grounding DINO.
-3. Container: test `apptainer build --fakeroot` on GreatLakes; otherwise build in WSL and start the `rsync` upload overnight.
+3. Environment: `sbatch slurm/setup_env.sbatch` builds the shared Python venv (GreatLakes cannot build containers; see `docs/environment.md`).
 
 **Day 1 (~3h)**
 - SAM 3 smoke test on SPGPU (G1). Record what works in `CLAUDE.md` section 12.
@@ -119,7 +119,7 @@ Each person presents their own slide(s). Divya assembles the deck.
 | If | Then |
 |---|---|
 | SAM 3 interactive path is broken at G1 | Use SAM 2.1 for the demo; drop text-path numbers |
-| Container isn't ready on GreatLakes | Use a temporary conda env in `$HOME`/scratch for the demo; keep the container for week 2 |
+| The shared venv build fails | Fix the error shown by `check_env.py` / the job log and rebuild with `FORCE=1`; fall back to a personal venv with the same commands |
 | LLMDet won't install | Grounding DINO is the demo detector |
 | Downloads are slow | Val + annotations are enough for items 1-4; train images are only needed for v0 |
 | Corrector v0 doesn't beat baselines | Present the architecture, training curves and an honest status; the RQ0 results carry the demo |

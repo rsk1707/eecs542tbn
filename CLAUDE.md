@@ -81,7 +81,7 @@ Roles are **self-selected**. Each role owns a directory under `src/promptcorrect
 ### Role descriptions (to help you choose)
 
 **P1 — Segmenters & infra** (systems / HPC / debugging comfort)
-- Builds and maintains the Singularity image, the GreatLakes shared directory and the Slurm templates.
+- Builds and maintains the shared Python environment, the GreatLakes shared directory and the Slurm templates.
 - Writes the SAM 3 (and SAM 2.1) `Segmenter` wrappers and the feature cache, and measures time and memory.
 - Everyone's GPU runs depend on this role, so it has the most handoffs. Hit your milestones early.
 - Good fit if you like Linux, clusters, PyTorch internals and unblocking people.
@@ -163,17 +163,21 @@ Global conventions: boxes are `xyxy` absolute pixels in the original image; mask
       data/        # COCO, LVIS (read-only after download)
       cache/       # features, detections
       ckpt/        # model weights
-      containers/  # .sif files (versioned by date, `current.sif` symlink)
+      venv -> venv-<date>/   # shared Python 3.12 environment (slurm/setup_env.sbatch)
+      src_deps/    # SAM 3 / SAM 2.1 checkouts used by the environment
+      hf_cache/    # HF_HOME
       runs/        # per-run outputs, checkpoints, logs
   ```
   Scratch purges files not accessed for ~60 days. Commit small result tables/figures to `results/`. Keep code/configs only in `$HOME`.
-- **Environment = Singularity container**, not a shared conda env. Build instructions: `docs/container.md`. Code, data and weights are bind-mounted, never baked into the image.
-- Run pattern:
+- **Environment = one shared Python 3.12 venv on scratch** (`$PC_ROOT/venv`), built by `slurm/setup_env.sbatch`; details in `docs/environment.md`. GreatLakes cannot build containers (`--fakeroot` fails: no subuid mapping), so `container/` is an unused recipe. Dependency versions live in `pyproject.toml`.
+- Run pattern (from the repo root):
   ```
-  singularity exec --nv --bind /scratch/eecs542f26s001_class_root/eecs542f26s001_class \
-    --env PYTHONPATH=$PWD/src $SIF python scripts/<script>.py --config configs/experiments/<x>.yaml
+  export PC_ROOT=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn
+  source $PC_ROOT/venv/bin/activate
+  export PYTHONPATH=$PWD/src PC_PATHS=greatlakes
+  python scripts/<script>.py --config configs/experiments/<x>.yaml
   ```
-- HF access to SAM 3 is **already granted**. Put your own `HF_TOKEN` in your shell, never in the repo or image. Point `HF_HOME` to scratch.
+- HF access to SAM 3 is **already granted**. Put your own `HF_TOKEN` in your shell, never in the repo. Point `HF_HOME` to scratch.
 - Workflow: code locally -> push to GitHub -> `git pull` on GreatLakes -> run via Slurm.
 
 Slurm account: `eecs542f26s001_class`. Remaining placeholder: `srikrish` (Srikrishnan's uniqname; appears in `configs/paths/greatlakes.yaml` and the paths above) — to be filled in.
@@ -182,8 +186,8 @@ Slurm account: `eecs542f26s001_class`. Remaining placeholder: `srikrish` (Srikri
 
 ```
 configs/{paths,experiments}/   # paths/{local,greatlakes}.yaml: data/cache/ckpt/runs roots (PC_PATHS env picks one)
-container/                     # promptcorrect.def (Singularity definition)
-docs/                          # interfaces.md, demo_sprint.md, container.md
+container/                     # promptcorrect.def + check_env.py (def unused on GreatLakes; check_env.py is used)
+docs/                          # interfaces.md, demo_sprint.md, environment.md (container.md: unused)
 src/promptcorrect/
     types.py  config.py        # shared contracts; paths, RunConfig, seeding
     testing.py                 # make_synthetic_objects() for CPU tests (no COCO needed)
@@ -208,7 +212,7 @@ Local dev: `pip install torch --index-url https://download.pytorch.org/whl/cpu &
 - Windows users: line endings must be LF (`.gitattributes` enforces it); CRLF breaks `.sbatch` files on Linux.
 - Fix random seeds and log them. Each experiment is a config file + git commit hash.
 - Every module should have at least a basic test that runs on the dummy segmenter on a CPU.
-- Python 3.12, PyTorch (see container). Type hints on public functions; keep comments sparse and useful.
+- Python 3.12, PyTorch (see docs/environment.md). Type hints on public functions; keep comments sparse and useful.
 
 ## 11. Rules for AI agents working in this repo
 
@@ -222,12 +226,12 @@ Local dev: `pip install torch --index-url https://download.pytorch.org/whl/cpu &
 
 ## 12. Status & open questions (update continuously)
 
-**Status (2026-10-23):** repo scaffold written (types, config, data helpers, `Segmenter` interface + `DummySegmenter`, stubs for other roles; 22 CPU tests pass). Container recipe and docs drafted but **untested**. SAM 3 HF access granted. Data not yet downloaded (`slurm/download_data.sbatch` ready, not yet run). SAM 3 / SAM 2.1 wrappers, detectors, perturbations, metrics and corrector are TODO stubs.
+**Status (2026-10-23):** repo scaffold written (types, config, data helpers, `Segmenter` interface + `DummySegmenter`, stubs for other roles; 22 CPU tests pass). Environment: `slurm/setup_env.sbatch` (shared venv) written but **not yet run on GreatLakes**; the container recipe is unusable there (no fakeroot). SAM 3 HF access granted. Data not yet downloaded (`slurm/download_data.sbatch` ready, not yet run). SAM 3 / SAM 2.1 wrappers, detectors, perturbations, metrics and corrector are TODO stubs.
 
 **Known assumptions to verify:**
 - SAM 3 interactive point/box API (`predict_inst`-style predictor) works as expected on A40.
 - Per-image feature cache size (estimate ~10 MB fp16; unmeasured). Check against scratch quota.
-- LLMDet's mmdet-based install may not fit the main container; Grounding DINO via `transformers` is the fallback.
+- LLMDet's mmdet-based install may not fit the shared environment; Grounding DINO via `transformers` is the fallback.
 - COCO <-> LVIS category mapping needs a hand check.
 - SAM 3 text-path Hungarian matching design (secondary setting).
 
@@ -235,6 +239,7 @@ Local dev: `pip install torch --index-url https://download.pytorch.org/whl/cpu &
 - 2026-10-25: P2 week 1 implementation prepared on `p2/week1-data-detectors`: COCO records, fixed demo split, leakage-safe split helper, Grounding DINO adapter and detection export. Official val annotations locally produced 500 images / 2,937 retained objects; CPU checks pass. GPU inference, LLMDet compatibility and full LVIS mapping remain unverified. O10 implementation proposals and reproducible commands: `docs/p2_week1.md`. Merged with the P1 scaffold on main (2026-10-25); `ObjectRecord` now has a single definition in `types.py`.
 - 2026-10-23: Timeline cut from 10 to 6 weeks, ~2 coding days/week; scope reduced to RQ0–RQ4 (stretch list in section 3).
 - 2026-10-23: Singularity container instead of a shared conda env; built locally (WSL2) if rootless build on GreatLakes isn't available.
+- 2026-10-25: GreatLakes cannot build containers (`singularity build --fakeroot`: "no valid mapping entry found"). Decision: use ONE shared Python 3.12 venv at `$PC_ROOT/venv` built by `slurm/setup_env.sbatch` from `pyproject.toml` plus pinned torch/SAM versions (`docs/environment.md`). The container recipe stays in the repo, unused; a GitHub Actions image build is a possible later option.
 - 2026-10-23: Shared data lives on `/scratch` in a group-writable directory.
 - 2026-10-23: Roles are self-selected via the claim board in section 5 (now claimed; see the board). Srikrishnan is doing the initial GreatLakes/container setup and repo scaffold for the whole team.
 - 2026-10-23: Shared formats written up in `docs/interfaces.md` (draft v0.1, from `CV_Project_Revised_Plan.pdf`). Open issues O1–O13 there need team decisions; the revised plan's 10-week schedule is ignored in favour of section 6 here.

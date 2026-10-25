@@ -1,4 +1,6 @@
-# Building the container image on GreatLakes
+# Building the container image (NOT USABLE ON GREATLAKES)
+
+> **Status 2026-10-25:** GreatLakes cannot build container images: `singularity build --fakeroot` fails with "no valid mapping entry found for srikrish". We therefore use a shared Python venv instead; see [`environment.md`](environment.md). This document is kept for a possible later route (an image built in CI or on a machine with root) and for the "What was validated" notes, which also apply to the venv.
 
 GreatLakes provides **SingularityCE 4.4.1** (`module load singularity`; commands are `singularity ...`, env vars are `SINGULARITY_*`). The `.def` recipe format is the same as Apptainer's. Apptainer is only used in the WSL fallback below.
 
