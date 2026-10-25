@@ -13,7 +13,7 @@
 #   export PC_ROOT=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn
 #   sbatch --account=eecs542f26s001_class slurm/run_gpu.sbatch scripts/smoke_sam3.py
 #   sbatch --account=eecs542f26s001_class --time=04:00:00 --job-name=rq0 \
-#          slurm/run_gpu.sbatch scripts/run_rq0.py --config configs/experiments/demo_example.yaml
+#          slurm/run_gpu.sbatch scripts/<your_script>.py --config configs/experiments/<x>.yaml
 #
 # Override resources on the command line (--time, --mem, --job-name, ...). Use run_cpu.sbatch for
 # CPU-only work (metrics, perturbation generation): SPGPU hours are the scarce budget.
