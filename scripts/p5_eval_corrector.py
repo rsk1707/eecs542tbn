@@ -23,7 +23,7 @@ from promptcorrect.corrector.rollout import BASELINES, format_report, run_rollou
 from promptcorrect.corrector.samples import load_coco_image
 from promptcorrect.corrector.standins import STANDINS_NOTE
 from promptcorrect.data.prepare import file_sha256, rooted_path
-from promptcorrect.data.records import read_records
+from promptcorrect.data.records import build_coco_records, read_records, write_records
 
 
 def main() -> None:
@@ -34,6 +34,9 @@ def main() -> None:
     ap.add_argument("--ckpt", default="best.pt")
     ap.add_argument("--method", default="corrector_v0")
     ap.add_argument("--records", default="objects_val.jsonl", help="relative to data_root (the demo val objects)")
+    ap.add_argument("--annotations", default="coco/annotations/instances_val2017.json",
+                    help="relative to data_root; only used if --records is unreadable")
+    ap.add_argument("--split", default="splits_demo.json", help="relative to data_root; as --annotations")
     ap.add_argument("--images", default="coco/val2017", help="relative to data_root")
     ap.add_argument("--baselines", nargs="*", default=list(BASELINES))
     ap.add_argument("--steps", type=int, default=3)
@@ -55,7 +58,21 @@ def main() -> None:
     samples_manifest = json.loads(rooted_path(args.paths, "runs_root", samples_run).joinpath("manifest.json").read_text())
 
     records_file = rooted_path(args.paths, "data_root", args.records)
-    records = list(read_records(records_file))
+    try:
+        records = list(read_records(records_file))
+        records_source = str(records_file)
+    except PermissionError:
+        # The shared file can be owner-only (mode 600). Rebuild it with P2's builder from the same inputs;
+        # the sha256 in the manifest shows whether it is identical (demo: 86f4cb3d...).
+        print(f"[eval] cannot read {records_file}; rebuilding from {args.annotations} + {args.split}", flush=True)
+        ann = json.loads(rooted_path(args.paths, "data_root", args.annotations).read_text(encoding="utf-8"))
+        ids = json.loads(rooted_path(args.paths, "data_root", args.split).read_text(encoding="utf-8"))["val"]
+        out_dir.mkdir(parents=True, exist_ok=True)
+        records_file = out_dir / "objects_val.jsonl"
+        if not records_file.exists():
+            write_records(build_coco_records(ann, ids), records_file)
+        records = list(read_records(records_file))
+        records_source = f"rebuilt from {args.annotations} + {args.split}"
     images = rooted_path(args.paths, "data_root", args.images)
 
     from promptcorrect.segmenters.sam3 import Sam3Segmenter
@@ -86,7 +103,7 @@ def main() -> None:
         "n_rows": len(df), "n_objects": int(df.obj_id.nunique()), "n_images": int(df.image_id.nunique()),
         "standins": STANDINS_NOTE, "git_commit": commit,
         "dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], text=True).strip()),
-        "inputs": {"records_sha256": file_sha256(records_file)},
+        "inputs": {"records_sha256": file_sha256(records_file), "records_source": records_source},
         "notes": "boundary_iou is step 0 only unless --boundary-all; SAM 3 hole filling off; clicks are sent with the prompt box",
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

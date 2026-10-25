@@ -133,7 +133,7 @@ def train(train_ds: SampleSet, val_ds: SampleSet, cfg: TrainConfig, out_dir: str
             scaler.step(opt)
             scaler.update()
             sched.step()
-            run["loss"] += float(loss) * len(idx)
+            run["loss"] += float(loss.detach()) * len(idx)
             run["bce"] += parts["bce"] * len(idx)
             run["dice"] += parts["dice"] * len(idx)
         row = {"epoch": epoch, **{f"train_{k}": v / len(train_ds) for k, v in run.items()},

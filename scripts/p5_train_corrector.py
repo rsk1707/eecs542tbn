@@ -11,7 +11,7 @@ history.jsonl, final_val.json, training_curves.png, manifest.json}.
 import argparse
 import json
 import subprocess
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import torch
 
@@ -53,6 +53,11 @@ def main() -> None:
     result = train(train_ds, val_ds, cfg, out_dir, device)
     model, ckpt = load_checkpoint(out_dir / "best.pt", device)
     final = {"best_epoch": ckpt["epoch"], **evaluate(model, val_ds, cfg, device, n_click=None)}
+    # Click-threshold sweep: if abstain_rate is ~1 at 0.5, rerun the eval with a lower --threshold.
+    final["threshold_sweep"] = {
+        t: {k: v for k, v in evaluate(model, val_ds, replace(cfg, threshold=t), device, n_click=None).items()
+            if k in ("fp_iou", "fn_iou", "click_hit_rate", "abstain_rate")}
+        for t in (0.2, 0.3, 0.4)}
     (out_dir / "final_val.json").write_text(json.dumps(final, indent=2) + "\n")
     training_curves(result["history"], out_dir / "training_curves.png")
     manifest = {"samples": args.samples, "n_train": len(train_ds), "n_val": len(val_ds),
