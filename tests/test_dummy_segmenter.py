@@ -111,6 +111,6 @@ def test_unknown_image(seg):
 def test_factory(objects):
     assert make_segmenter("dummy", objects=objects).backend == "dummy"
     with pytest.raises(NotImplementedError):
-        make_segmenter("sam3")
+        make_segmenter("sam21")  # SAM 2.1 wrapper is still a stub
     with pytest.raises(ValueError):
         make_segmenter("nope")

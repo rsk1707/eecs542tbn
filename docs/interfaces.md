@@ -117,7 +117,14 @@ class Segmenter:
 - **[Proposed]** A `DummySegmenter` (GT mask, slightly eroded/dilated) implements this same interface so everyone can develop and test on a CPU. Its logits are synthesized so `to_full_res(...) > 0` gives the dummy mask.
 - **[Proposed]** Nobody outside `segmenters/` resizes, pads or rescales logits or coordinates. Mapping to and from the model's input resolution lives only in the wrapper and `to_full_res`.
 - **[Implemented in the scaffold, tentative]** `Segmenter` is an abstract base class (`segmenters/base.py`); backends are built with `make_segmenter(backend, **kwargs)` (`"dummy" | "sam3" | "sam21"`) instead of `Segmenter(backend=...)`. `SegOutput.mask_logits` has shape `[h, w]`; `SegOutput` also has optional `alt_logits` / `alt_ious` (the suggested fix for O5). `Segmenter.full_res_mask(output)` is a convenience returning a boolean `[H, W]` mask.
-- **[Open]** O5 (multimask return shape), O6 (where `presence_score` comes from), O7 (cache scope and cache-miss behaviour), O13 (internal box conventions).
+- **[Verified on SAM 3, 2026-10-25 smoke test, A40]** (O5, O6, O13 are resolved by these):
+  - Box prompts are `xyxy` pixels in the original image (true IoU 0.91 / 0.94 / 0.91 vs GT on three COCO objects). `Sam3Segmenter` hides all SAM 3 conventions.
+  - Low-res logits are **288 x 288** (SAM 2.1 will be 256), clamped to [-32, 32]. `to_full_res` uses SAM 3's own `postprocess_masks` (fills holes up to 256 low-res pixels, then bilinear resize), so it matches `predict_inst`'s masks. `Prompt.mask_logits` must be 288 x 288 on SAM 3.
+  - Multimask: `SegOutput.mask_logits` is the best candidate by predicted IoU, with all candidates in `alt_logits` [K, 288, 288] and `alt_ious` [K]. Predicted IoU is overconfident and the ordering is unreliable (an ambiguous point prompt: predicted 0.93, real IoU 0.58, while another candidate scored 0.65 predicted and 0.75 real).
+  - Box-only prompts for one image are batched into a single decoder call (`Sam3Segmenter.box_batch_size`, default 32); prompts with points use one call each.
+  - `presence_score` (O6): SAM 3's presence score exists only on the text path (`presence_logit_dec`, a per-image, per-phrase scalar, 0.98-0.99 in the smoke test). It is multiplied into the detection `scores` and not stored. `predict()` always returns `presence_score=None`. `Sam3Segmenter.detect_text` reads the raw value with one extra pass and exposes it as `last_presence`. The corrector must not assume a presence input at every step.
+  - `detect_text(phrase, threshold=None)` returns detections **sorted by score, highest first**, boxes clipped to the image (SAM 3 can return slightly negative coordinates), masks as RLE. The default confidence threshold is 0.5 and matters: at 0.1 the smoke test saw 3 / 25 / 1 detections instead of 1 / 5 / 1, and a class with 3 GT instances produced 5 detections at 0.5 (extras need `match`).
+- **[Open]** O7 (cache scope and cache-miss behaviour; the demo runs the encoder live: about 0.1 s per image after warm-up, peak 5 GB GPU memory).
 
 ---
 
@@ -258,6 +265,8 @@ match(pred_masks, gt_masks, ignore_masks=(), min_iou=0.1, ignore_frac=0.5) -> Ma
 
 ## 9. Open issues found while transcribing (need a decision)
 
+**Resolved by the SAM 3 smoke test (2026-10-25): O5, O6, O13** (see section 3). The rows below still show their original wording.
+
 Recommended resolutions are suggestions, not decisions. **Before coding starts:** O1–O4, O6–O8. The rest can be settled this week.
 
 | # | Issue | Why it matters | Recommended resolution | Owner |
@@ -289,4 +298,5 @@ Notes outside the formats, for the extra datasets: images from ThinObject/DIS/SA
 
 - 2026-10-23: v0.1 draft transcribed from `CV_Project_Revised_Plan.pdf`; open issues O1–O13 collected.
 - 2026-10-23: scaffold implements these in `src/promptcorrect/types.py`: `ResultRow` includes the proposed Δ columns (O4); `Segmenter` is an ABC with a `make_segmenter` factory and `SegOutput.alt_*` fields (O5). Review and either accept or revise.
+- 2026-10-25 (P1, Srikrishnan): SAM 3 smoke test passed (23 checks). Resolved O5, O6, O13: SAM 3 low-res logits are 288 x 288, presence exists only on the text path, `detect_text` sorted and clipped, box batching. Implemented `Sam3Segmenter` (`segmenters/sam3.py`).
 - 2026-10-25 (P3, Divya): v0.2. Decided O11 (results under `$RUNS_ROOT/{run_id}/`, git index `results/runs_index.csv`) and O12 (method registry in `eval/methods.py`, adds `b2_multimask`). Fixed `iou`/`boundary_iou` (bool masks, dilation 0.02) and `match` contracts. Proposed O4 columns and a `detected` column; settled O1 (ignore masks derived from the original annotations).

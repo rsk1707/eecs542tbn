@@ -35,7 +35,7 @@ Show **preliminary RQ0 numbers on real data**, plus a first look at the correcto
 
 **Gates**
 - **G0 (end of tonight):** scaffold merged; `sbatch` download submitted; environment build started.
-- **G1 (Day 1 midday):** SAM 3 smoke test result (text + box + point prompts on one image, on SPGPU). If the interactive path doesn't work by Day 1 evening, **fall back to SAM 2.1** for the demo (no `detect_text`; text-path numbers dropped, detector-box numbers kept).
+- **G1 (Day 1 midday) — PASSED 2026-10-25 (SAM 3 on an A40, 23/23 checks):** SAM 3 smoke test result (text + box + point prompts on one image, on SPGPU). If the interactive path doesn't work by Day 1 evening, **fall back to SAM 2.1** for the demo (no `detect_text`; text-path numbers dropped, detector-box numbers kept).
 - **G2 (Day 1 end):** every module merged with passing CPU tests on the dummy. Srikrishnan runs one image through the whole chain.
 - **G3 (Day 2 midday):** first real RQ0 numbers on ~100 images look sane (clean GT-box IoU is high; perturbed IoU drops as severity grows).
 

@@ -226,19 +226,20 @@ Local dev: `pip install torch --index-url https://download.pytorch.org/whl/cpu &
 
 ## 12. Status & open questions (update continuously)
 
-**Status (2026-10-23):** repo scaffold written (types, config, data helpers, `Segmenter` interface + `DummySegmenter`, stubs for other roles; 22 CPU tests pass). Environment: `slurm/setup_env.sbatch` (shared venv) written but **not yet run on GreatLakes**; the container recipe is unusable there (no fakeroot). SAM 3 HF access granted. Data not yet downloaded (`slurm/download_data.sbatch` ready, not yet run). SAM 3 / SAM 2.1 wrappers, detectors, perturbations, metrics and corrector are TODO stubs.
+**Status (2026-10-23):** repo scaffold written (types, config, data helpers, `Segmenter` interface + `DummySegmenter`, stubs for other roles; 22 CPU tests pass). Environment: `slurm/setup_env.sbatch` (shared venv) written but built on GreatLakes (Python 3.12, torch 2.10.0+cu126, check_env all OK, CUDA available on an A40); SAM 3 smoke test passed 23/23; the container recipe is unusable there (no fakeroot). SAM 3 HF access granted. Data not yet downloaded (`slurm/download_data.sbatch` ready, not yet run). SAM 3 / SAM 2.1 wrappers, detectors, perturbations, metrics and corrector are TODO stubs.
 
 **Known assumptions to verify:**
-- SAM 3 interactive point/box API (`predict_inst`-style predictor) works as expected on A40.
+- ~~SAM 3 interactive point/box API works on A40.~~ **Verified 2026-10-25** (smoke test, 23/23 checks): see `docs/interfaces.md` section 3 for the measured facts (288x288 low-res logits, presence only on the text path, ~0.1 s encode, ~30 ms per decoder call, 5 GB GPU memory).
 - Per-image feature cache size (estimate ~10 MB fp16; unmeasured). Check against scratch quota.
 - LLMDet's mmdet-based install may not fit the shared environment; Grounding DINO via `transformers` is the fallback.
 - COCO <-> LVIS category mapping needs a hand check.
-- SAM 3 text-path Hungarian matching design (secondary setting).
+- SAM 3 text-path Hungarian matching design (secondary setting). Note: at the default confidence 0.5 a class with 3 GT instances produced 5 detections, and the threshold changes RQ0 failure rates: decide and record the threshold used.
 
 **Decisions log**
 - 2026-10-25: P2 week 1 implementation prepared on `p2/week1-data-detectors`: COCO records, fixed demo split, leakage-safe split helper, Grounding DINO adapter and detection export. Official val annotations locally produced 500 images / 2,937 retained objects; CPU checks pass. GPU inference, LLMDet compatibility and full LVIS mapping remain unverified. O10 implementation proposals and reproducible commands: `docs/p2_week1.md`. Merged with the P1 scaffold on main (2026-10-25); `ObjectRecord` now has a single definition in `types.py`.
 - 2026-10-23: Timeline cut from 10 to 6 weeks, ~2 coding days/week; scope reduced to RQ0–RQ4 (stretch list in section 3).
 - 2026-10-23: Singularity container instead of a shared conda env; built locally (WSL2) if rootless build on GreatLakes isn't available.
+- 2026-10-25: SAM 3 smoke test passed on an A40. Even clean GT-box prompts give IoU only 0.91-0.94 against COCO polygon GT, so the IoU 0.9 threshold is close to the ceiling for COCO (use it with care; LVIS masks are better). Ideal clicks are not always monotone: on a truncated person box IoU went 0.144 -> 0.705 -> 0.407 -> 0.865, so the oracle simulator should report the best-so-far and harm rate matters. `Sam3Segmenter` implemented (`segmenters/sam3.py`).
 - 2026-10-25: GreatLakes cannot build containers (`singularity build --fakeroot`: "no valid mapping entry found"). Decision: use ONE shared Python 3.12 venv at `$PC_ROOT/venv` built by `slurm/setup_env.sbatch` from `pyproject.toml` plus pinned torch/SAM versions (`docs/environment.md`). The container recipe stays in the repo, unused; a GitHub Actions image build is a possible later option.
 - 2026-10-23: Shared data lives on `/scratch` in a group-writable directory.
 - 2026-10-23: Roles are self-selected via the claim board in section 5 (now claimed; see the board). Srikrishnan is doing the initial GreatLakes/container setup and repo scaffold for the whole team.
