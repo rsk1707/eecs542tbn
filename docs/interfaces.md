@@ -1,6 +1,6 @@
 # Shared interfaces and formats
 
-**Status:** Draft v0.1 (2026-10-23). Transcribed from `CV_Project_Revised_Plan.pdf` (AI-suggested, not yet signed off by the team).
+**Status:** Draft v0.2 (2026-10-25). v0.1 was transcribed from `CV_Project_Revised_Plan.pdf` (AI-suggested, not yet signed off by the team); v0.2 adds P3's decisions (results location, method names, `iou`/`boundary_iou`/`match` contracts).
 **Purpose:** one place that defines every format two roles must agree on, so nobody writes converters or hits coordinate bugs.
 **Overrides:** this doc is the detailed contract behind `CLAUDE.md` section 7. Once `src/promptcorrect/types.py` exists, the code and this doc must say the same thing; if they differ, fix the one that is wrong in the same PR.
 
@@ -163,7 +163,22 @@ Long format: **one row per (object, method, step)**, saved as a Parquet file per
 - **Harm** is defined once: `iou_final < iou_step0 - 0.01`.
 - **Shared results sheet:** one row per *run* only: `run_id`, config path, git commit, headline numbers. Per-object data stays in the Parquet files.
 - **[Proposed]** dtypes and semantics: `run_id`/`obj_id`/`method`/`prompt_origin`/`pert_type`/`novelty`/`size_bin` string; `image_id`/`step`/`n_decoder_calls` int; the rest float; `pert_type`/`pert_level` null for non-perturbed prompts; `n_decoder_calls` cumulative up to and including this step; `latency_ms` for this step only, excluding the image encoder; `iou_final` = IoU at the method's last step for that object.
-- **[Open]** O4 (Δ-vector columns needed for RQ2), O11 (where files live), O12 (method names).
+- **Where files live (O11, decided by P3):** per-object data goes to `$RUNS_ROOT/{run_id}/results.parquet`, with the resolved `config.yaml` next to it, on scratch. Nothing per-object goes in git. Git `results/` holds only summary tables, figures and `results/runs_index.csv` (one row per run: `run_id, owner, date, git_commit, runs_path, notes`, plus headline numbers). The index replaces the "shared results sheet".
+- **Method names (O12, decided by P3):** `method` must be a name from the registry in `src/promptcorrect/eval/methods.py`; the writer rejects anything else. Initial registry:
+
+  | Name | Meaning |
+  |---|---|
+  | `b0_none` | no correction (step 0 only) |
+  | `b1_random_k` | k random positive clicks inside the box |
+  | `b2_multimask` | SAM multimask output, keep highest predicted IoU |
+  | `b3_box_refit` | refit the box to the current mask and rerun |
+  | `b3_unc_click` | click at the centre of the largest low-\|logit\| region |
+  | `oracle_clicks` | ideal clicks from GT (upper bound) |
+  | `corrector_v<n>` | learned corrector, version n (e.g. `corrector_v0`) |
+
+  New methods are added by a PR to the registry, not by writing a new string.
+- **[Proposed by P3, needs P4 ack] O4 columns:** `delta_cx, delta_cy, delta_log_sw, delta_log_sh` (float, from `describe()`, NaN when there is no box) and `n_points` (int, points in the prompt at this step).
+- **[Proposed by P3] `detected` column (bool):** `False` for a GT object that no detection matched (see `match()` in section 7). Those objects get one step-0 row with `iou = 0` and are reported as *missed*, separately from *detected but poor mask*. Always `True` for GT-box and perturbed-GT prompts.
 
 ---
 
@@ -198,7 +213,34 @@ splits_file: data/splits.json   # fixed once, never regenerated
 
 If two people write their own IoU or severity function, numbers in different report sections won't agree.
 
-**[Proposed]** additions to this list: COCO `xywh` -> `xyxy` and RLE encode/decode helpers (P2, in `data/`); YAML config loader and seed setter (P1). **[Open]** `match` output contract and `boundary_iou` dilation ratio are for P3 to fix and write down here.
+**[Proposed]** additions to this list: COCO `xywh` -> `xyxy` and RLE encode/decode helpers (P2, in `data/`); YAML config loader and seed setter (P1).
+
+### `iou` / `boundary_iou` (decided by P3, implemented in `src/promptcorrect/eval/metrics.py`)
+
+```python
+iou(pred, gt) -> float
+boundary_iou(pred, gt, dilation_ratio=0.02) -> float
+```
+- Inputs are **bool** 2-D arrays (NumPy, or CPU torch tensors) of equal shape at original resolution: `to_full_res(logits) > 0`. Float/int masks raise `TypeError`, so logits can't be passed by accident.
+- Empty prediction → 0. Empty GT → `ValueError` (such objects are filtered out of the records).
+- Boundary IoU follows Cheng et al. (CVPR 2021) and the official `boundary-iou-api`: boundary width `d = round(0.02 × image diagonal)`, minimum 1 px; checked to give identical boundaries to the official OpenCV code.
+
+### `match` (decided by P3, implementation in progress)
+
+```python
+@dataclass
+class MatchResult:
+    pairs: list[tuple[int, int, float]]  # (pred_idx, gt_idx, mask IoU), each IoU >= min_iou
+    unmatched_preds: list[int]           # false positives
+    unmatched_gts: list[int]             # missed objects
+    ignored_preds: list[int]             # mostly inside crowd / filtered objects; excluded from both
+
+match(pred_masks, gt_masks, ignore_masks=(), min_iou=0.1, ignore_frac=0.5) -> MatchResult
+```
+- One-to-one Hungarian matching that maximizes total mask IoU among non-ignored predictions; assigned pairs below `min_iou` are dropped and both sides count as unmatched.
+- A prediction is ignored if at least `ignore_frac` of its area lies inside the union of `ignore_masks` (COCO-style crowd handling). P3 builds the ignore masks from the original COCO annotations: every annotation of the image whose `obj_id` is **not** in the object records (crowds and size-filtered objects). The filter rule itself therefore lives only in P2's record builder (see O1).
+- Matching runs per `(image_id, phrase)`: detections for a phrase are matched only to GT objects of that category (detections are exported for GT-present phrases only, O9).
+- Used for the text path (secondary setting) **and** for detector boxes: each detection box is run through the segmenter and its mask is matched to GT, which tells us which GT object a detection belongs to.
 
 ---
 
@@ -234,6 +276,11 @@ Recommended resolutions are suggestions, not decisions. **Before coding starts:*
 | O12 | `method` names and `match()` output contract aren't fixed | Group-by breaks if names drift | P3 keeps a registry of stable method names (`b0_none`, `b1_random_k`, ...) and documents `match` output (matched pairs with IoU, plus unmatched predictions and GTs) | P3 |
 | O13 | SAM 3's processor and interactive predictor may use different box conventions (for example normalized `cxcywh` vs. `xyxy` pixels), and some SAM variants resize without keeping aspect | Coordinate bugs that are hard to spot | Hide all of it inside the wrapper; add a unit test that round-trips a box through `predict` + `to_full_res` on a known image. Verify against the SAM 3 code | P1 |
 
+**Status after v0.2 (2026-10-25):**
+- **O11, O12:** decided by P3 (section 5). `match` output contract and the Boundary IoU dilation ratio are fixed too (section 7).
+- **O4:** columns proposed by P3 in section 5; waiting for P4 to confirm they match `describe()`'s `delta`.
+- **O1:** settled. P2's builder uses `box_w < 32 and box_h < 32` (branch `p2/week1-data-detectors`). P3 derives ignore masks from the original annotations (section 7), so no extra export is needed from P2.
+
 Notes outside the formats, for the extra datasets: images from ThinObject/DIS/SA-Co have no COCO integer `image_id`; if they are added later (stretch), `image_id` needs a namespace such as `"dis:0123"`.
 
 ---
@@ -242,3 +289,4 @@ Notes outside the formats, for the extra datasets: images from ThinObject/DIS/SA
 
 - 2026-10-23: v0.1 draft transcribed from `CV_Project_Revised_Plan.pdf`; open issues O1–O13 collected.
 - 2026-10-23: scaffold implements these in `src/promptcorrect/types.py`: `ResultRow` includes the proposed Δ columns (O4); `Segmenter` is an ABC with a `make_segmenter` factory and `SegOutput.alt_*` fields (O5). Review and either accept or revise.
+- 2026-10-25 (P3, Divya): v0.2. Decided O11 (results under `$RUNS_ROOT/{run_id}/`, git index `results/runs_index.csv`) and O12 (method registry in `eval/methods.py`, adds `b2_multimask`). Fixed `iou`/`boundary_iou` (bool masks, dilation 0.02) and `match` contracts. Proposed O4 columns and a `detected` column; settled O1 (ignore masks derived from the original annotations).
