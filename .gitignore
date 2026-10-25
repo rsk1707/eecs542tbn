@@ -241,3 +241,6 @@ __marimo__/
 
 # Secrets
 *.token
+
+# Slurm job logs (<job-name>-<jobid>.out)
+*-[0-9]*.out
