@@ -71,6 +71,39 @@ What is already known from reading the SAM 3 code (pinned commit) and still need
 - Text path: `processor.set_text_prompt(prompt, state)` fills `state["masks"|"masks_logits"|"boxes"|"scores"]`; boxes are xyxy pixels; detections are filtered by a confidence threshold (default 0.5, which directly affects the RQ0 failure rates).
 - **Presence score (open issue O6):** only the text path has one. `scores` already includes it as a factor and the raw value is not stored; `predict_inst` returns none. Getting the raw value needs a second `model.forward_grounding(...)` call.
 
+## Day 2 pipeline: records and detections (P1 runs these; outputs feed P3)
+
+All from the repo root on GreatLakes. `configs/paths/greatlakes.yaml` is the paths file for every script (key names are case-insensitive, so P2's `DATA_ROOT` style and our `data_root` style both work).
+
+```bash
+cd ~/eecs542tbn && git pull
+export PC_ROOT=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn
+A=--account=eecs542f26s001_class
+P=configs/paths/greatlakes.yaml
+
+# 1. Object records for the fixed 500-image demo subset (CPU, about a minute).
+#    Copy the committed split first so everybody uses the same image list.
+cp data/splits_demo.json $PC_ROOT/data/splits_demo.json
+J1=$(sbatch --parsable $A slurm/run_cpu.sbatch scripts/prepare_p2_demo.py --paths $P)
+
+# 2. Grounding DINO detections (independent detector; waits for step 1). Uses the base weights we downloaded.
+J2=$(sbatch --parsable $A --dependency=afterok:$J1 --time=01:00:00 slurm/run_gpu.sbatch      scripts/export_p2_detections.py --paths $P --device cuda --seed 0      --model-id $PC_ROOT/ckpt/grounding-dino-base)
+
+# 3. SAM 3 text detections (waits for step 1). The threshold changes the RQ0 numbers: agree on it first.
+J3=$(sbatch --parsable $A --dependency=afterok:$J1 --time=01:00:00 slurm/run_gpu.sbatch      scripts/export_sam3_text.py --paths $P --threshold 0.5)
+squeue -u $USER
+```
+
+Outputs (each next to a `*.manifest.json` that must exist for the run to count as complete):
+
+| File | Producer |
+|---|---|
+| `$PC_ROOT/data/objects_val.jsonl` + `objects_val.manifest.json` | step 1 |
+| `$PC_ROOT/cache/detections/grounding_dino/val.jsonl` | step 2 (`image_id, phrase, box, score`) |
+| `$PC_ROOT/cache/detections/sam3_text/val.jsonl` | step 3 (adds `mask_rle`); the manifest also holds per-query SAM 3 presence |
+
+The export scripts refuse to overwrite an existing output. To rerun, move the old files away first (or pass `--output` with a new name).
+
 ## Changing a dependency version
 
 Edit `pyproject.toml` (or the pins at the top of the script for torch / SAM commits), push, `git pull` on GreatLakes, and rebuild as above. Tell the team when the symlink moves.

@@ -17,8 +17,10 @@ def rooted_path(paths_file: str | Path, root: str, path: str | Path) -> Path:
     """Resolve artifact paths against a named root in the team's paths YAML."""
     paths_file = Path(paths_file).resolve()
     with paths_file.open(encoding="utf-8") as stream:
-        roots = yaml.safe_load(stream)
-    base = Path(roots[root]).expanduser()
+        roots = {str(k).lower(): v for k, v in yaml.safe_load(stream).items()}  # DATA_ROOT == data_root
+    if root.lower() not in roots:
+        raise KeyError(f"{root} not found in {paths_file} (keys are case-insensitive)")
+    base = Path(roots[root.lower()]).expanduser()
     if not base.is_absolute():
         base = paths_file.parent / base
     return base / path
