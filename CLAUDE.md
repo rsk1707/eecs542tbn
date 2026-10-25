@@ -169,6 +169,7 @@ Global conventions: boxes are `xyxy` absolute pixels in the original image; mask
       runs/        # per-run outputs, checkpoints, logs
   ```
   Scratch purges files not accessed for ~60 days. Commit small result tables/figures to `results/`. Keep code/configs only in `$HOME`.
+- **Team uniqnames (for ACLs and `squeue`):** srikrish (Srikrishnan, P1), shresth (Shresth, P2), shdivya (Divya, P3), amansoni (Aman, P4), sharvani (Sharvani, P5). Access to `$PC_ROOT` is per-user ACLs (access + default) for these five; teammates also need `--x` on Srikrishnan's scratch folder. Check with `getfacl $PC_ROOT`.
 - **Environment = one shared Python 3.12 venv on scratch** (`$PC_ROOT/venv`), built by `slurm/setup_env.sbatch`; details in `docs/environment.md`. GreatLakes cannot build containers (`--fakeroot` fails: no subuid mapping), so `container/` is an unused recipe. Dependency versions live in `pyproject.toml`.
 - Run pattern (from the repo root):
   ```
