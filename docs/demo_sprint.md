@@ -44,7 +44,7 @@ Show **preliminary RQ0 numbers on real data**, plus a first look at the correcto
 ### Srikrishnan (P1 - segmenters & infra)
 **Tonight (~3h)**
 1. Scaffold the repo: `pyproject.toml`, `configs/paths/{local,greatlakes}.yaml`, `src/promptcorrect/` package, `types.py` from `docs/interfaces.md`, `Segmenter` base class and `DummySegmenter` (with the click response above), CPU test skeleton. Push to `main`.
-2. GreatLakes: fill in `<ACCOUNT>`/`<uniqname>` in `CLAUDE.md`; create the shared dir with group write; submit the download job on `standard`: COCO val2017 + annotations first, then train2017, LVIS v1 annotations, SAM 2.1 checkpoint, SAM 3 weights (your HF token), Grounding DINO.
+2. GreatLakes: fill in `srikrish` in `CLAUDE.md` and `configs/paths/greatlakes.yaml`; create the shared dir and share it with teammates via `setfacl` (not group write); submit the download job on `standard`: COCO val2017 + annotations first, then train2017, LVIS v1 annotations, SAM 2.1 checkpoint, SAM 3 weights (your HF token), Grounding DINO.
 3. Container: test `apptainer build --fakeroot` on GreatLakes; otherwise build in WSL and start the `rsync` upload overnight.
 
 **Day 1 (~3h)**

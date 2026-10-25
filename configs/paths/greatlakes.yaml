@@ -1,0 +1,8 @@
+# GreatLakes paths. Use with: export PC_PATHS=greatlakes
+# Account: eecs542f26s001_class. The shared dir lives in the owner's scratch folder and is shared with
+# teammates via setfacl (CLAUDE.md section 8).
+# Owner uniqname: srikrish.
+data_root: /scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn/data
+cache_root: /scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn/cache
+ckpt_root: /scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn/ckpt
+runs_root: /scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn/runs
