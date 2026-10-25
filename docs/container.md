@@ -114,6 +114,15 @@ export APPTAINERENV_HF_HOME=$HF_HOME   # pass into the container
 export APPTAINERENV_HF_TOKEN=$HF_TOKEN
 ```
 
+## What was validated (and what was not)
+
+Before the first build, the recipe's Python stages were replayed on real Python 3.12 (Windows, CPU build of torch 2.10.0): pinned SAM 3 / SAM 2.1 commits, the dependency list extracted from `pyproject.toml` by the recipe's own line, one `pip` resolver pass, `pip check`, and `container/check_env.py`. That caught and fixed:
+- `pkg_resources` missing (newest `setuptools` removed it, `import sam3` needs it) -> `setuptools<81`.
+- `pyarrow` 26 needs NumPy 2 at import time (undeclared), SAM 3 forces `numpy<2` -> `pyarrow<26`, `numpy<2`.
+- SAM 2.1 needs `--no-build-isolation`; torch must be installed first from the CUDA index; `transformers` must stay `<5`.
+
+**Not validated** (only the first real build will show): the `apt` packages and Apptainer/Singularity syntax, the CUDA build of torch (the replay used the CPU build), and `import sam3` on Linux. On Windows it fails only with `No module named 'triton'`; Linux CUDA wheels of torch install `triton` themselves, so this is expected not to happen in the image. If `check_env.py` shows `FAIL sam3` after the real build, read the error before changing anything.
+
 ## Troubleshooting
 
 | Symptom | Likely fix |
