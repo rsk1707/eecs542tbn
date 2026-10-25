@@ -5,7 +5,7 @@
 > Five people are working in parallel with five separate agents; this file is how we avoid drift.
 > If something here is wrong or outdated, fix it via a small PR (see "Keeping this file current").
 
-Last updated: 2026-10-25 (P2 data pipeline and P3 eval contracts merged into main)
+Last updated: 2026-10-25 (P2 week 1 implementation)
 
 ---
 
@@ -238,7 +238,6 @@ Local dev: `pip install torch --index-url https://download.pytorch.org/whl/cpu &
 - 2026-10-23: Shared data lives on `/scratch` in a group-writable directory.
 - 2026-10-23: Roles are self-selected via the claim board in section 5 (now claimed; see the board). Srikrishnan is doing the initial GreatLakes/container setup and repo scaffold for the whole team.
 - 2026-10-23: Shared formats written up in `docs/interfaces.md` (draft v0.1, from `CV_Project_Revised_Plan.pdf`). Open issues O1–O13 there need team decisions; the revised plan's 10-week schedule is ignored in favour of section 6 here.
-- 2026-10-25: P3 (Divya) decided O11/O12 and fixed the `iou`/`boundary_iou`/`match` contracts (`docs/interfaces.md` v0.2). `eval/metrics.py` and `eval/methods.py` added with CPU tests. O1 settled; O4 waits on P4.
 
 ## 13. Keeping this file current
 
