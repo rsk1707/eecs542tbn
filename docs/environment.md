@@ -104,6 +104,37 @@ Outputs (each next to a `*.manifest.json` that must exist for the run to count a
 
 The export scripts refuse to overwrite an existing output. To rerun, move the old files away first (or pass `--output` with a new name).
 
+## RQ0 study (P1 runs it; P3 owns the analysis)
+
+After the three Day 2 jobs finished:
+
+```bash
+source $PC_ROOT/venv/bin/activate && export PYTHONPATH=$PWD/src
+python scripts/summarize_inputs.py --paths configs/paths/greatlakes.yaml     # counts only; checks both detection streams exist
+
+# Ceiling only (GT box -> SAM 3, plus ideal clicks). Needs no detections and no match(); runs today.
+sbatch $A --time=01:00:00 slurm/run_gpu.sbatch scripts/run_rq0.py --paths $P --run-id demo_rq0_ceiling --sources gt_box
+
+# Full study: GT box, Grounding DINO boxes, SAM 3 text boxes, SAM 3 text masks (+ ideal clicks on the box sources).
+# Needs P3's match() in eval/matching.py; the script says so and exits if it is still a stub.
+sbatch $A --time=02:00:00 slurm/run_gpu.sbatch scripts/run_rq0.py --paths $P --run-id demo_rq0_1
+
+python scripts/summarize_rq0.py --paths $P --run-id demo_rq0_1             # re-print the tables any time
+```
+
+Outputs in `$PC_ROOT/runs/<run-id>/`: `results.parquet` (one row per object, source, method, step; the long format of `docs/interfaces.md` section 5 plus `source`, `detected`, `det_score`, `pred_iou`, `n_gt_same_class`, `n_pred`, `n_fp`), `queries.parquet` (per image/phrase/source: detections, matches, false positives), `config.yaml`, `rq0_manifest.json`, and `summary_*.csv`. Per-object data is not committed (scratch only).
+
+The four sources and what each answers (`source` column):
+
+| `source` | Prompt | Question it answers |
+|---|---|---|
+| `gt_box` | the GT box | the ceiling: how good can a perfect prompt be |
+| `grounding_dino_box` | independent detector boxes | failures of an automatic pipeline (RQ0 headline) |
+| `sam3_text_box` | SAM 3's own detection boxes, re-run through the interactive head | failures caused by the box |
+| `sam3_text_mask` | SAM 3's text masks as they are | failures of the detector's own masks |
+
+A GT object nobody detects is **missed** (`detected=False`, IoU 0), counted as a failure in the "all" rates and kept out of the "detected" rates. `boundary_iou` is filled at step 0 only. Ideal clicks are the standard simulation: positive click in the largest false-negative region, negative click in the largest false-positive region, at the point farthest from that region's boundary. Expect IoU to be non-monotone in places (a click can hurt).
+
 ## Changing a dependency version
 
 Edit `pyproject.toml` (or the pins at the top of the script for torch / SAM commits), push, `git pull` on GreatLakes, and rebuild as above. Tell the team when the symlink moves.
