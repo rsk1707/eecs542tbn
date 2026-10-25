@@ -1,10 +1,13 @@
 # Building the Apptainer image and moving it to GreatLakes
 
-Recipe: [`container/promptcorrect.def`](../container/promptcorrect.def). It is an **untested draft**, so expect to adjust versions on the first build.
-The image holds only dependencies (Python 3.12, PyTorch 2.7 cu126, SAM 3, SAM 2.1, COCO/LVIS tooling). Code, data, weights and caches are bind-mounted at runtime, so code changes never need a rebuild.
+Recipe: [`container/promptcorrect.def`](../container/promptcorrect.def). The Apptainer build itself has **not been run yet**; the Python install steps were replayed locally (see "What was validated" below).
+The image holds only dependencies (Python 3.12, PyTorch 2.10.0 + torchvision 0.25.0 for CUDA 12.6, SAM 3 and SAM 2.1 pinned to exact commits, COCO tooling). Code, data, weights and caches are bind-mounted at runtime, so code changes never need a rebuild.
 
-**Option A (preferred, if it works):** build directly on GreatLakes with `--fakeroot` (step 0).
-**Option B (fallback):** build on a Windows machine through WSL2 and upload the `.sif` (steps 1–5).
+**Dependency versions have one source: [`pyproject.toml`](../pyproject.toml).** The recipe copies it into the image and installs the lists from it. To change a Python package version, edit `pyproject.toml` only, then rebuild. The recipe itself only holds what pyproject can't express (CUDA torch, SAM 3 / SAM 2.1 from git, a few cluster-only extras).
+
+**Build from the repo root** (the recipe copies `pyproject.toml` and `container/check_env.py` relative to where you run `apptainer build`).
+
+**Recommended: build in WSL (steps 1-4).** It costs no class credits, you can retry as often as you like, and only the finished `.sif` is uploaded. Building on GreatLakes (Option A, step 0) spends credits on every attempt, including failed ones. Use it only if WSL is not an option.
 
 ## 0. Can GreatLakes build it itself?
 
@@ -61,11 +64,11 @@ sudo APPTAINER_TMPDIR=$APPTAINER_TMPDIR APPTAINER_CACHEDIR=$APPTAINER_CACHEDIR \
 
 Takes about 15–40 minutes. Do not commit the `.sif` (`*.sif` is gitignored; `.gitattributes` marks it binary).
 
-Quick CPU sanity check:
+The build ends by running `container/check_env.py` (`%test`), which prints `OK`/`FAIL` plus the version for every dependency (it never fails the build; read the output). Run it again any time:
 ```bash
-apptainer exec ~/promptcorrect-$DATE.sif python -c "import torch, sam3, sam2, pycocotools; print(torch.__version__)"
+apptainer exec ~/promptcorrect-$DATE.sif python /opt/check_env.py
 ```
-CUDA won't be available in WSL unless you have an NVIDIA GPU and WSL driver set up. That's fine; the GPU check happens on GreatLakes (step 5).
+Everything should say `OK`. CUDA won't be available in WSL unless you have an NVIDIA GPU and WSL driver set up. That's fine; the GPU check happens on GreatLakes (step 5).
 
 ## 4. Transfer to GreatLakes
 
@@ -93,7 +96,8 @@ srun --account=eecs542f26s001_class --partition=spgpu --gres=gpu:1 --cpus-per-ta
 module load apptainer     # or singularity
 S=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn
 apptainer exec --nv --bind /scratch/eecs542f26s001_class_root/eecs542f26s001_class $S/containers/current.sif \
-    python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+    python /opt/check_env.py      # expect all OK and "cuda available: True"
+nvidia-smi | head -4              # note the driver version (CUDA 12.6 wheels need a recent enough driver)
 ```
 Then run the SAM 3 smoke test (text, box and point prompts on one image) and record what worked in `CLAUDE.md` section 12.
 
@@ -116,8 +120,10 @@ export APPTAINERENV_HF_TOKEN=$HF_TOKEN
 |---|---|
 | `no space left on device` during build | Set `APPTAINER_TMPDIR` to a path in WSL's Linux filesystem; check `df -h ~`. |
 | Build killed / out of memory | Raise WSL memory in `.wslconfig` (step 1). |
-| `pip` can't find a torch wheel | Check the `torch==` / `torchvision==` pair in the `.def` and the cu126 index URL. |
-| `sam3` import fails | Read the SAM 3 README for current install requirements; update the `%post` block. |
+| `pip` can't find a torch wheel | Check the `torch==` / `torchvision==` pair in the `.def` and the cu126 index URL (torch 2.10.0 pairs with torchvision 0.25.0). |
+| `sam3` import fails | Read the SAM 3 README for current install requirements; update the `%post` block. SAM 3 needs Python >= 3.12 and `numpy<2`. |
+| `FATAL: ... pyproject.toml: no such file` during `%files` | You ran `apptainer build` from outside the repo root. `cd` to the repo root first. |
+| `torch.cuda.is_available()` is False on a GPU node | Missing `--nv`, or the node's driver is too old for the CUDA 12.6 wheels (check `nvidia-smi`). |
 | CUDA not available on GreatLakes | You forgot `--nv`, or you are on a CPU node. |
 | `.sbatch` scripts fail with `^M` errors | CRLF line endings. Re-checkout with LF (`.gitattributes` should prevent this). |
 | Pulling/building fills `$HOME` quota | Set `APPTAINER_CACHEDIR` and `APPTAINER_TMPDIR` to scratch. |

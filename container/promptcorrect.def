@@ -1,10 +1,19 @@
 Bootstrap: docker
 From: ubuntu:24.04
 
-# UNTESTED first draft. Expect to tweak versions on the first build.
+# Build from the REPO ROOT so %files finds pyproject.toml:
+#   apptainer build promptcorrect-$(date +%F).sif container/promptcorrect.def
+#
 # Only dependencies live in the image. Code, data, weights and caches are bind-mounted at runtime.
-# Ubuntu 24.04 ships Python 3.12. PyTorch cu126 wheels bundle the CUDA runtime, so no CUDA toolkit
-# is needed in the image; the host NVIDIA driver is injected with `apptainer exec --nv`.
+# Ubuntu 24.04 ships Python 3.12 (SAM 3 needs >= 3.12). PyTorch CUDA wheels bundle the CUDA runtime,
+# so no CUDA toolkit is needed; the host NVIDIA driver is injected with `apptainer exec --nv`.
+#
+# Single source of truth for Python dependency versions: pyproject.toml. This file only adds what
+# pyproject cannot express (CUDA torch, SAM 3 / SAM 2.1 from git, a few cluster-only extras).
+
+%files
+    pyproject.toml /opt/pyproject.toml
+    container/check_env.py /opt/check_env.py
 
 %labels
     Project eecs542tbn
@@ -17,6 +26,7 @@ From: ubuntu:24.04
     export LANG=C.UTF-8
 
 %post
+    set -e
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y --no-install-recommends \
@@ -26,26 +36,32 @@ From: ubuntu:24.04
 
     python3 -m venv /opt/venv
     . /opt/venv/bin/activate
-    pip install --no-cache-dir --upgrade pip wheel setuptools
+    # setuptools < 81: newer releases removed pkg_resources, which `import sam3` needs.
+    pip install --no-cache-dir --upgrade pip wheel "setuptools<81"
 
-    # Torch version follows the SAM 3 README (check it; bump here if it changes).
-    pip install --no-cache-dir torch==2.7.0 torchvision==0.22.0 \
+    # 1) torch first, from the CUDA 12.6 index (matches SAM 3's README: torch 2.10.0, CUDA >= 12.6).
+    #    Installed separately so pip never swaps in a CPU or different-CUDA build from PyPI later.
+    pip install --no-cache-dir torch==2.10.0 torchvision==0.25.0 \
         --index-url https://download.pytorch.org/whl/cu126
 
-    # SAM 3. Pin a commit here once the smoke test passes, for reproducibility.
+    # 2) SAM 3 and SAM 2.1, pinned to exact commits so rebuilds are identical.
     git clone https://github.com/facebookresearch/sam3.git /opt/sam3
-    cd /opt/sam3
-    pip install --no-cache-dir -e .
+    git -C /opt/sam3 checkout f1647e8d0c1d280991f4d1b7d974c2704537fe66
+    git clone https://github.com/facebookresearch/sam2.git /opt/sam2
+    git -C /opt/sam2 checkout 2b90b9f5ceec907a1c18123530e92e794ad901a4
 
-    # SAM 2.1 (fallback segmenter). Skip the optional CUDA extension build (no nvcc in the image).
-    SAM2_BUILD_CUDA=0 pip install --no-cache-dir "git+https://github.com/facebookresearch/sam2.git"
+    # 3) Dependency list straight from pyproject.toml (core + gpu + dev extras).
+    python -c 'import tomllib; p = tomllib.load(open("/opt/pyproject.toml", "rb"))["project"]; print("\n".join(p["dependencies"] + p["optional-dependencies"]["gpu"] + p["optional-dependencies"]["dev"]))' > /opt/requirements.txt
+    cat /opt/requirements.txt
 
-    # Project dependencies
-    # Version bounds must match pyproject.toml (transformers 5 breaks P2's Grounding DINO code).
-    pip install --no-cache-dir \
-        "numpy>=1.26,<3" "scipy>=1.11" "pyyaml>=6,<7" "pycocotools>=2.0.7,<3" "Pillow>=10,<13" \
-        "pandas>=2.1" "pyarrow>=14" "transformers>=4.51,<5" "huggingface_hub>=0.23" "safetensors>=0.4" \
-        "pytest>=8,<10" lvis opencv-python-headless scikit-image matplotlib tqdm accelerate timm einops
+    # 4) ONE resolver pass for everything, so SAM 3's pins (e.g. numpy<2) constrain the whole set.
+    #    SAM 2.1: skip the optional CUDA extension (no nvcc here); --no-build-isolation because its
+    #    setup.py expects torch to be importable at build time.
+    SAM2_BUILD_CUDA=0 pip install --no-cache-dir --no-build-isolation \
+        -r /opt/requirements.txt -e /opt/sam3 -e /opt/sam2 \
+        opencv-python-headless scikit-image matplotlib einops accelerate
+
+    pip check || echo "WARNING: pip check reported conflicts (see above)"
 
 %test
-    python -c "import torch, pycocotools, cv2; print('torch', torch.__version__)"
+    python /opt/check_env.py
