@@ -120,6 +120,7 @@ sbatch $A --time=01:00:00 slurm/run_gpu.sbatch scripts/run_rq0.py --paths $P --r
 sbatch $A --time=02:00:00 slurm/run_gpu.sbatch scripts/run_rq0.py --paths $P --run-id demo_rq0_1
 
 python scripts/summarize_rq0.py --paths $P --run-id demo_rq0_1             # re-print the tables any time
+python scripts/make_rq0_figures.py --paths $P --run-id demo_rq0_1          # slide-ready PNGs in $PC_ROOT/runs/demo_rq0_1/figures/
 ```
 
 Outputs in `$PC_ROOT/runs/<run-id>/`: `results.parquet` (one row per object, source, method, step; the long format of `docs/interfaces.md` section 5 plus `source`, `detected`, `det_score`, `pred_iou`, `n_gt_same_class`, `n_pred`, `n_fp`), `queries.parquet` (per image/phrase/source: detections, matches, false positives), `config.yaml`, `rq0_manifest.json`, and `summary_*.csv`. Per-object data is not committed (scratch only).
