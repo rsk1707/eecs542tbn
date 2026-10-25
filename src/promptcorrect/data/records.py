@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 import json
 import math
 from pathlib import Path
@@ -11,25 +11,9 @@ from typing import Any
 import numpy as np
 from pycocotools import mask as mask_utils
 
+from promptcorrect.types import ObjectRecord  # single shared definition (docs/interfaces.md section 1)
+
 from .io import new_text_file
-
-
-@dataclass
-class ObjectRecord:
-    """P2-owned contract from docs/interfaces.md, section 1."""
-
-    obj_id: str
-    image_id: int
-    source: str
-    category_id: int
-    category_name: str
-    novelty: str
-    gt_box: list[float]
-    gt_mask: dict
-    area: float
-    size_bin: str
-    thinness: float
-    n_neighbors: int
 
 
 def xywh_to_xyxy(box: Iterable[float]) -> list[float]:
@@ -147,3 +131,32 @@ def read_records(path: str | Path) -> Iterator[ObjectRecord]:
     with Path(path).open(encoding="utf-8") as stream:
         for line in stream:
             yield ObjectRecord(**json.loads(line))
+
+
+def save_objects(path: str | Path, records: Iterable[ObjectRecord]) -> int:
+    """`write_records` that also returns how many records were written."""
+    count = 0
+
+    def counted() -> Iterator[ObjectRecord]:
+        nonlocal count
+        for record in records:
+            count += 1
+            yield record
+
+    write_records(counted(), path)
+    return count
+
+
+def iter_objects(path: str | Path) -> Iterator[ObjectRecord]:
+    return read_records(path)
+
+
+def load_objects(path: str | Path) -> list[ObjectRecord]:
+    return list(read_records(path))
+
+
+def group_by_image(records: Iterable[ObjectRecord]) -> dict[int, list[ObjectRecord]]:
+    out: dict[int, list[ObjectRecord]] = {}
+    for record in records:
+        out.setdefault(record.image_id, []).append(record)
+    return out

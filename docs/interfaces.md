@@ -116,6 +116,7 @@ class Segmenter:
 - Fallback: on SAM 2.1 `presence_score` is `None`, so consumers must handle `None`.
 - **[Proposed]** A `DummySegmenter` (GT mask, slightly eroded/dilated) implements this same interface so everyone can develop and test on a CPU. Its logits are synthesized so `to_full_res(...) > 0` gives the dummy mask.
 - **[Proposed]** Nobody outside `segmenters/` resizes, pads or rescales logits or coordinates. Mapping to and from the model's input resolution lives only in the wrapper and `to_full_res`.
+- **[Implemented in the scaffold, tentative]** `Segmenter` is an abstract base class (`segmenters/base.py`); backends are built with `make_segmenter(backend, **kwargs)` (`"dummy" | "sam3" | "sam21"`) instead of `Segmenter(backend=...)`. `SegOutput.mask_logits` has shape `[h, w]`; `SegOutput` also has optional `alt_logits` / `alt_ious` (the suggested fix for O5). `Segmenter.full_res_mask(output)` is a convenience returning a boolean `[H, W]` mask.
 - **[Open]** O5 (multimask return shape), O6 (where `presence_score` comes from), O7 (cache scope and cache-miss behaviour), O13 (internal box conventions).
 
 ---
@@ -240,3 +241,4 @@ Notes outside the formats, for the extra datasets: images from ThinObject/DIS/SA
 ## 10. Changelog
 
 - 2026-10-23: v0.1 draft transcribed from `CV_Project_Revised_Plan.pdf`; open issues O1–O13 collected.
+- 2026-10-23: scaffold implements these in `src/promptcorrect/types.py`: `ResultRow` includes the proposed Δ columns (O4); `Segmenter` is an ABC with a `make_segmenter` factory and `SegOutput.alt_*` fields (O5). Review and either accept or revise.

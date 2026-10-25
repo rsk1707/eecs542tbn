@@ -1,0 +1,9 @@
+# Example run config (schema: docs/interfaces.md section 6). Copy and rename per experiment.
+run_id: demo_example_0
+git_commit: auto          # resolved to the real commit hash at launch
+seed: 0
+backend: dummy            # dummy | sam3 | sam21
+train_data: synthetic     # synthetic | real | mixed | matched
+perturbations: [shift, scale, truncate]
+max_steps: 3
+splits_file: splits_demo.json   # relative to data_root; fixed once, never regenerated

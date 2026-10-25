@@ -219,11 +219,25 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Generated P2 data/model artifacts (fixed split IDs and small manifests stay tracked)
+# --- Project-specific (eecs542tbn) ---
+# Large artifacts: these live on GreatLakes scratch, never in git
+*.sif
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+# Generated P2 data artifacts (fixed split IDs and small manifests stay tracked)
 /data/*.jsonl
 /data/coco/
 /data/lvis/
 /cache/
 /ckpt/
 /runs/
-*.sif
+/_local/
+
+# Editors / OS
+.vscode/
+.DS_Store
+
+# Secrets
+*.token

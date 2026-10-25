@@ -1,1 +1,1 @@
-"""P2 dataset preparation utilities."""
+"""Owner: P2 (Shresth). COCO/LVIS object records, splits, dataset preparation, geometry helpers."""
