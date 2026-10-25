@@ -1,0 +1,7 @@
+# P2 CPU data preparation and tests; no model download needed.
+numpy>=1.26,<3
+pycocotools>=2.0.7,<3
+Pillow>=10,<13
+PyYAML>=6,<7
+pytest>=8,<10
+# GPU detector jobs additionally need torch, torchvision and transformers>=4.51,<5.

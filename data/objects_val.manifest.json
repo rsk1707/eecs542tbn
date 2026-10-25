@@ -1,0 +1,19 @@
+{
+  "source": "coco",
+  "split": "val2017",
+  "seed": 0,
+  "n_images": 500,
+  "n_objects": 2937,
+  "size_bins": {
+    "small": 683,
+    "large": 825,
+    "medium": 1429
+  },
+  "annotations_sha256": "e8c7f7908f1d7278341fae127d0da654f102f11bd7b21d8aeefa635b8c810b6f",
+  "splits_sha256": "52599467cc1b134d456cbbf9bb9a8bea705b8d26ffadfcd80cf89679ec3f0f3a",
+  "records_sha256": "86f4cb3de2c32ff55427ac6297f211fd601a5e7b9b30f91f623cf8b3c64d6901",
+  "filter": "iscrowd == 0 and not (box_w < 32 and box_h < 32)",
+  "thinness": "squared pixel-edge perimeter (including holes) / decoded mask area",
+  "neighbors": "retained same-class centers at Euclidean distance <= reference box width",
+  "phrase_policy": "unique categories of retained objects per image"
+}

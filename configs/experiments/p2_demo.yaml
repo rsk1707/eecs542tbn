@@ -1,0 +1,8 @@
+run_id: demo_p2_s0
+git_commit: auto
+seed: 0
+backend: sam3
+train_data: synthetic
+perturbations: [shift, scale, truncate]
+max_steps: 3
+splits_file: data/splits_demo.json

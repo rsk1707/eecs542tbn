@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated P2 data/model artifacts (fixed split IDs and small manifests stay tracked)
+/data/*.jsonl
+/data/coco/
+/data/lvis/
+/cache/
+/ckpt/
+/runs/
+*.sif

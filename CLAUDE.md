@@ -5,7 +5,7 @@
 > Five people are working in parallel with five separate agents; this file is how we avoid drift.
 > If something here is wrong or outdated, fix it via a small PR (see "Keeping this file current").
 
-Last updated: 2026-10-23 (project kickoff / demo sprint)
+Last updated: 2026-10-25 (P2 week 1 implementation)
 
 ---
 
@@ -224,6 +224,7 @@ results/                       # small CSV/PNG only
 - SAM 3 text-path Hungarian matching design (secondary setting).
 
 **Decisions log**
+- 2026-10-25: P2 week 1 implementation prepared on `p2/week1-data-detectors`: COCO records, fixed demo split, leakage-safe split helper, Grounding DINO adapter and detection export. Official val annotations locally produced 500 images / 2,937 retained objects; CPU checks pass. GPU inference, LLMDet compatibility and full LVIS mapping remain unverified. O10 implementation proposals and reproducible commands: `docs/p2_week1.md`. Shared P1 scaffold is still pending on main.
 - 2026-10-23: Timeline cut from 10 to 6 weeks, ~2 coding days/week; scope reduced to RQ0–RQ4 (stretch list in section 3).
 - 2026-10-23: Apptainer container instead of a shared conda env; built locally (WSL2) if rootless build on GreatLakes isn't available.
 - 2026-10-23: Shared data lives on `/scratch` in a group-writable directory.
