@@ -185,6 +185,7 @@ Long format: **one row per (object, method, step)**, saved as a Parquet file per
   | `corrector_v<n>` | learned corrector, version n (e.g. `corrector_v0`) |
 
   New methods are added by a PR to the registry, not by writing a new string.
+- **Writer:** `eval/results.py`. `write_results(rows, paths.run_dir(run_id))` validates the rows (registered method, one run_id that matches the directory, unique (obj_id, method, step), step ≥ 0), writes with fixed dtypes and refuses to overwrite by default. `read_results(run_dir)` reads it back. `update_runs_index(run_id, owner, runs_path, notes, headline={...})` adds or replaces the run's row in `results/runs_index.csv`.
 - **[Proposed by P3, needs P4 ack] O4 columns:** `delta_cx, delta_cy, delta_log_sw, delta_log_sh` (float, from `describe()`, NaN when there is no box) and `n_points` (int, points in the prompt at this step).
 - **[Proposed by P3] `detected` column (bool):** `False` for a GT object that no detection matched (see `match()` in section 7). Those objects get one step-0 row with `iou = 0` and are reported as *missed*, separately from *detected but poor mask*. Always `True` for GT-box and perturbed-GT prompts.
 
