@@ -1,27 +1,58 @@
-# Building the Apptainer image and moving it to GreatLakes
+# Building the container image on GreatLakes
 
-Recipe: [`container/promptcorrect.def`](../container/promptcorrect.def). The Apptainer build itself has **not been run yet**; the Python install steps were replayed locally (see "What was validated" below).
+GreatLakes provides **SingularityCE 4.4.1** (`module load singularity`; commands are `singularity ...`, env vars are `SINGULARITY_*`). The `.def` recipe format is the same as Apptainer's. Apptainer is only used in the WSL fallback below.
+
+Recipe: [`container/promptcorrect.def`](../container/promptcorrect.def). The container build itself has **not been run yet**; the Python install steps were replayed locally (see "What was validated" below).
 The image holds only dependencies (Python 3.12, PyTorch 2.10.0 + torchvision 0.25.0 for CUDA 12.6, SAM 3 and SAM 2.1 pinned to exact commits, COCO tooling). Code, data, weights and caches are bind-mounted at runtime, so code changes never need a rebuild.
 
 **Dependency versions have one source: [`pyproject.toml`](../pyproject.toml).** The recipe copies it into the image and installs the lists from it. To change a Python package version, edit `pyproject.toml` only, then rebuild. The recipe itself only holds what pyproject can't express (CUDA torch, SAM 3 / SAM 2.1 from git, a few cluster-only extras).
 
-**Build from the repo root** (the recipe copies `pyproject.toml` and `container/check_env.py` relative to where you run `apptainer build`).
+**Build from the repo root** (the recipe copies `pyproject.toml` and `container/check_env.py` relative to where you run the build).
 
-**Recommended: build in WSL (steps 1-4).** It costs no class credits, you can retry as often as you like, and only the finished `.sif` is uploaded. Building on GreatLakes (Option A, step 0) spends credits on every attempt, including failed ones. Use it only if WSL is not an option.
+**Primary path: build on GreatLakes (steps 0a-0d).** A build is roughly 4 cores for under an hour on `standard` (a few core-hours of the account's budget; check your usage after the first run), so avoid rebuilding often. **Fallback: build in WSL (steps 1-4)**, which costs no credits but needs an upload.
 
-## 0. Can GreatLakes build it itself?
+## 0. Build on GreatLakes
+
+### 0a. Setup
 
 ```bash
-ssh <uniqname>@greatlakes.arc-ts.umich.edu      # UM VPN may be needed off campus; Duo 2FA
-module avail apptainer singularity               # find the module name
-module load apptainer                            # or singularity
-cd /scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish
-export APPTAINER_CACHEDIR=$PWD/.apptainer-cache APPTAINER_TMPDIR=$PWD/.apptainer-tmp
-mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
-apptainer build --fakeroot test.sif docker://alpine   # works? then use Option A for the real build
+module load singularity
+singularity --version                            # SingularityCE 4.4.1
+S=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish
+export PC_ROOT=$S/eecs542tbn
+mkdir -p $PC_ROOT/containers $S/.sing-cache $S/.sing-tmp
+export SINGULARITY_CACHEDIR=$S/.sing-cache SINGULARITY_TMPDIR=$S/.sing-tmp   # on scratch: /tmp and $HOME are too small
 ```
 
-If that works, run the real build as a Slurm job on `standard` (not on the login node) with the same `--fakeroot` flag and the `.def` from the repo. If it fails with a fakeroot or user-namespace error, use Option B.
+### 0b. Check that rootless builds work (about 3 minutes)
+
+```bash
+srun --account=eecs542f26s001_class --partition=standard --cpus-per-task=2 --mem=4G --time=00:15:00 --pty bash
+module load singularity
+S=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish      # re-set in the new shell
+export SINGULARITY_CACHEDIR=$S/.sing-cache SINGULARITY_TMPDIR=$S/.sing-tmp
+cd $S && singularity build --fakeroot test.sif docker://alpine && echo FAKEROOT_OK
+exit
+```
+`FAKEROOT_OK` means you can build here. A fakeroot / `/etc/subuid` mapping error means you cannot, so use the WSL fallback (steps 1-4).
+
+### 0c. Run the real build as a batch job
+
+```bash
+cd ~/eecs542tbn && git pull            # repo root, up to date
+S=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish; export PC_ROOT=$S/eecs542tbn
+sbatch --account=eecs542f26s001_class --partition=standard --cpus-per-task=4 --mem=16G --time=02:00:00 \
+  --job-name=pc_build --output=pc_build-%j.out \
+  --wrap "module load singularity; export SINGULARITY_CACHEDIR=$S/.sing-cache SINGULARITY_TMPDIR=$S/.sing-tmp; singularity build --fakeroot $PC_ROOT/containers/promptcorrect-\$(date +%F).sif container/promptcorrect.def"
+```
+Watch it with `squeue -u $USER` and `tail -f pc_build-<jobid>.out`. About 20-40 minutes; the result is over 10 GB. Success = the log ends with the `OK`/`FAIL` list from `check_env.py` and the `.sif` exists in `$PC_ROOT/containers/`.
+
+### 0d. Publish it for the team
+
+```bash
+cd $PC_ROOT/containers && ln -sfn promptcorrect-<date>.sif current.sif
+```
+Teammates read it through the ACLs set on `$PC_ROOT` (see `CLAUDE.md` section 8). Then continue at step 5 (GPU check).
 
 ## 1. WSL2 prerequisites (Windows 11)
 
@@ -48,7 +79,7 @@ apptainer --version
 ```
 
 If the PPA doesn't work, download the `.deb` for your Ubuntu from the Apptainer GitHub releases page and run `sudo apt install ./apptainer_<version>_amd64.deb`.
-Check the GreatLakes version too (`module load apptainer && apptainer --version`). A `.sif` built with a similar or older version runs fine there.
+GreatLakes runs SingularityCE 4.4.1. A `.sif` built by Apptainer in WSL normally runs there (the SIF format is shared), but this has not been tested; confirm with `check_env.py` after uploading.
 
 ## 3. Build
 
@@ -93,9 +124,9 @@ ln -sfn promptcorrect-$DATE.sif current.sif
 
 ```bash
 srun --account=eecs542f26s001_class --partition=spgpu --gres=gpu:1 --cpus-per-task=4 --mem=32G --time=00:30:00 --pty bash
-module load apptainer     # or singularity
+module load singularity
 S=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn
-apptainer exec --nv --bind /scratch/eecs542f26s001_class_root/eecs542f26s001_class $S/containers/current.sif \
+singularity exec --nv --bind /scratch/eecs542f26s001_class_root/eecs542f26s001_class $S/containers/current.sif \
     python /opt/check_env.py      # expect all OK and "cuda available: True"
 nvidia-smi | head -4              # note the driver version (CUDA 12.6 wheels need a recent enough driver)
 ```
@@ -110,8 +141,8 @@ Edit `container/promptcorrect.def`, rebuild with a new date, upload, and move th
 ```bash
 export HF_HOME=$S/hf_cache            # model downloads go to scratch, not $HOME
 export HF_TOKEN=...                    # your own token, from your shell only
-export APPTAINERENV_HF_HOME=$HF_HOME   # pass into the container
-export APPTAINERENV_HF_TOKEN=$HF_TOKEN
+export SINGULARITYENV_HF_HOME=$HF_HOME   # pass into the container (SingularityCE prefix)
+export SINGULARITYENV_HF_TOKEN=$HF_TOKEN
 ```
 
 ## What was validated (and what was not)
@@ -131,8 +162,8 @@ Before the first build, the recipe's Python stages were replayed on real Python 
 | Build killed / out of memory | Raise WSL memory in `.wslconfig` (step 1). |
 | `pip` can't find a torch wheel | Check the `torch==` / `torchvision==` pair in the `.def` and the cu126 index URL (torch 2.10.0 pairs with torchvision 0.25.0). |
 | `sam3` import fails | Read the SAM 3 README for current install requirements; update the `%post` block. SAM 3 needs Python >= 3.12 and `numpy<2`. |
-| `FATAL: ... pyproject.toml: no such file` during `%files` | You ran `apptainer build` from outside the repo root. `cd` to the repo root first. |
+| `FATAL: ... pyproject.toml: no such file` during `%files` | You ran the build from outside the repo root. `cd` to the repo root first. |
 | `torch.cuda.is_available()` is False on a GPU node | Missing `--nv`, or the node's driver is too old for the CUDA 12.6 wheels (check `nvidia-smi`). |
 | CUDA not available on GreatLakes | You forgot `--nv`, or you are on a CPU node. |
 | `.sbatch` scripts fail with `^M` errors | CRLF line endings. Re-checkout with LF (`.gitattributes` should prevent this). |
-| Pulling/building fills `$HOME` quota | Set `APPTAINER_CACHEDIR` and `APPTAINER_TMPDIR` to scratch. |
+| Pulling/building fills `$HOME` quota | Set `SINGULARITY_CACHEDIR` and `SINGULARITY_TMPDIR` to scratch (`APPTAINER_*` in WSL). |

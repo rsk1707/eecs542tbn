@@ -81,7 +81,7 @@ Roles are **self-selected**. Each role owns a directory under `src/promptcorrect
 ### Role descriptions (to help you choose)
 
 **P1 — Segmenters & infra** (systems / HPC / debugging comfort)
-- Builds and maintains the Apptainer image, the GreatLakes shared directory and the Slurm templates.
+- Builds and maintains the Singularity image, the GreatLakes shared directory and the Slurm templates.
 - Writes the SAM 3 (and SAM 2.1) `Segmenter` wrappers and the feature cache, and measures time and memory.
 - Everyone's GPU runs depend on this role, so it has the most handoffs. Hit your milestones early.
 - Good fit if you like Linux, clusters, PyTorch internals and unblocking people.
@@ -167,10 +167,10 @@ Global conventions: boxes are `xyxy` absolute pixels in the original image; mask
       runs/        # per-run outputs, checkpoints, logs
   ```
   Scratch purges files not accessed for ~60 days. Commit small result tables/figures to `results/`. Keep code/configs only in `$HOME`.
-- **Environment = Apptainer container**, not a shared conda env. Build instructions: `docs/container.md`. Code, data and weights are bind-mounted, never baked into the image.
+- **Environment = Singularity container**, not a shared conda env. Build instructions: `docs/container.md`. Code, data and weights are bind-mounted, never baked into the image.
 - Run pattern:
   ```
-  apptainer exec --nv --bind /scratch/eecs542f26s001_class_root/eecs542f26s001_class \
+  singularity exec --nv --bind /scratch/eecs542f26s001_class_root/eecs542f26s001_class \
     --env PYTHONPATH=$PWD/src $SIF python scripts/<script>.py --config configs/experiments/<x>.yaml
   ```
 - HF access to SAM 3 is **already granted**. Put your own `HF_TOKEN` in your shell, never in the repo or image. Point `HF_HOME` to scratch.
@@ -182,7 +182,7 @@ Slurm account: `eecs542f26s001_class`. Remaining placeholder: `srikrish` (Srikri
 
 ```
 configs/{paths,experiments}/   # paths/{local,greatlakes}.yaml: data/cache/ckpt/runs roots (PC_PATHS env picks one)
-container/                     # promptcorrect.def (Apptainer definition)
+container/                     # promptcorrect.def (Singularity definition)
 docs/                          # interfaces.md, demo_sprint.md, container.md
 src/promptcorrect/
     types.py  config.py        # shared contracts; paths, RunConfig, seeding
@@ -234,7 +234,7 @@ Local dev: `pip install torch --index-url https://download.pytorch.org/whl/cpu &
 **Decisions log**
 - 2026-10-25: P2 week 1 implementation prepared on `p2/week1-data-detectors`: COCO records, fixed demo split, leakage-safe split helper, Grounding DINO adapter and detection export. Official val annotations locally produced 500 images / 2,937 retained objects; CPU checks pass. GPU inference, LLMDet compatibility and full LVIS mapping remain unverified. O10 implementation proposals and reproducible commands: `docs/p2_week1.md`. Merged with the P1 scaffold on main (2026-10-25); `ObjectRecord` now has a single definition in `types.py`.
 - 2026-10-23: Timeline cut from 10 to 6 weeks, ~2 coding days/week; scope reduced to RQ0–RQ4 (stretch list in section 3).
-- 2026-10-23: Apptainer container instead of a shared conda env; built locally (WSL2) if rootless build on GreatLakes isn't available.
+- 2026-10-23: Singularity container instead of a shared conda env; built locally (WSL2) if rootless build on GreatLakes isn't available.
 - 2026-10-23: Shared data lives on `/scratch` in a group-writable directory.
 - 2026-10-23: Roles are self-selected via the claim board in section 5 (now claimed; see the board). Srikrishnan is doing the initial GreatLakes/container setup and repo scaffold for the whole team.
 - 2026-10-23: Shared formats written up in `docs/interfaces.md` (draft v0.1, from `CV_Project_Revised_Plan.pdf`). Open issues O1–O13 there need team decisions; the revised plan's 10-week schedule is ignored in favour of section 6 here.

@@ -2,11 +2,11 @@ Bootstrap: docker
 From: ubuntu:24.04
 
 # Build from the REPO ROOT so %files finds pyproject.toml:
-#   apptainer build promptcorrect-$(date +%F).sif container/promptcorrect.def
+#   singularity build --fakeroot promptcorrect-$(date +%F).sif container/promptcorrect.def   (Apptainer: apptainer build)
 #
 # Only dependencies live in the image. Code, data, weights and caches are bind-mounted at runtime.
 # Ubuntu 24.04 ships Python 3.12 (SAM 3 needs >= 3.12). PyTorch CUDA wheels bundle the CUDA runtime,
-# so no CUDA toolkit is needed; the host NVIDIA driver is injected with `apptainer exec --nv`.
+# so no CUDA toolkit is needed; the host NVIDIA driver is injected with `singularity exec --nv`.
 #
 # Single source of truth for Python dependency versions: pyproject.toml. This file only adds what
 # pyproject cannot express (CUDA torch, SAM 3 / SAM 2.1 from git, a few cluster-only extras).
