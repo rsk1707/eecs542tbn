@@ -7,11 +7,14 @@ resizes, pads or rescales logits or coordinates: use `to_full_res`.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 import numpy as np
-from torch import Tensor
 
 from promptcorrect.types import Prompt, SegOutput, TextDetection
+
+if TYPE_CHECKING:  # annotations only: importing torch is slow on a cold filesystem and plot/eval scripts don't need it
+    from torch import Tensor
 
 
 class Segmenter(ABC):
