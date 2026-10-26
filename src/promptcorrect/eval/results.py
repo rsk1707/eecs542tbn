@@ -79,13 +79,15 @@ def update_runs_index(
     notes: str = "",
     headline: dict[str, float] | None = None,
     index_path: str | Path = RUNS_INDEX,
+    git_commit: str | None = None,
 ) -> Path:
-    """Add (or replace) this run's row in runs_index.csv. `headline` adds columns, e.g. {"miou": 0.81}."""
+    """Add (or replace) this run's row in runs_index.csv. `headline` adds columns, e.g. {"miou": 0.81}.
+    `git_commit`: the commit the run used (its config.yaml); defaults to the current checkout."""
     row = {
         "run_id": run_id,
         "owner": owner,
         "date": dt.date.today().isoformat(),
-        "git_commit": resolve_git_commit(),
+        "git_commit": git_commit or resolve_git_commit(),
         "runs_path": str(runs_path),
         "notes": notes,
         **(headline or {}),

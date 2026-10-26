@@ -171,6 +171,7 @@ Long format: **one row per (object, method, step)**, saved as a Parquet file per
 
 - **Store only raw values.** Success@0.75, harm rate and transfer ratio are computed when analyzing results, from these columns.
 - **Harm** is defined once: `iou_final < iou_step0 - 0.01`.
+- **Derived metrics** live in `eval/aggregate.py` (failure rates, success/fail@t, click curves, NoC, harm, `headline()` for the runs index). `python scripts/summarize_rq0.py <run_dir> [--out results/<run_id>] [--index-owner P3]` writes the tables and figures (figures need the `plot` extra).
 - **Shared results sheet:** one row per *run* only: `run_id`, config path, git commit, headline numbers. Per-object data stays in the Parquet files.
 - **[Proposed]** dtypes and semantics: `run_id`/`obj_id`/`method`/`prompt_origin`/`pert_type`/`novelty`/`size_bin` string; `image_id`/`step`/`n_decoder_calls` int; the rest float; `pert_type`/`pert_level` null for non-perturbed prompts; `n_decoder_calls` cumulative up to and including this step; `latency_ms` for this step only, excluding the image encoder; `iou_final` = IoU at the method's last step for that object.
 - **Where files live (O11, decided by P3):** per-object data goes to `$RUNS_ROOT/{run_id}/results.parquet`, with the resolved `config.yaml` next to it, on scratch. Nothing per-object goes in git. Git `results/` holds only summary tables, figures and `results/runs_index.csv` (one row per run: `run_id, owner, date, git_commit, runs_path, notes`, plus headline numbers). The index replaces the "shared results sheet".

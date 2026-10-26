@@ -35,6 +35,8 @@ gpu = [
     "huggingface_hub>=0.23",
     "safetensors>=0.4",
 ]
+# Figures (scripts/summarize_rq0.py). Already in the GreatLakes venv.
+plot = ["matplotlib>=3.8"]
 dev = ["pytest>=8,<10"]
 
 [tool.setuptools.packages.find]

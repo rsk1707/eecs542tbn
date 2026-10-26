@@ -1,0 +1,4 @@
+prompt_origin,method,n,mean_gain,harm_rate
+grounding_dino,oracle_clicks,1922,0.0723,0.0208
+gt,oracle_clicks,2937,0.0624,0.0255
+sam3_text,oracle_clicks,2606,0.0718,0.0169
