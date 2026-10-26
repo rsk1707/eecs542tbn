@@ -49,9 +49,16 @@ def _pert_fields(p: Prompt) -> dict:
 
 
 def run_sweep(segmenter, records, *, run_id: str, levels: dict = SWEEP_LEVELS, methods=("b0_none",), steps: int = 3,
-              seed: int = 0, boundary_all: bool = False, max_images: int | None = None,
-              log_every: int = 25) -> pd.DataFrame:
-    """Run the sweep on the current records. Returns the long-format rows as a DataFrame."""
+              seed: int = 0, boundary_all: bool = False, boundary: bool = True, max_images: int | None = None,
+              log_every: int = 10, time_budget_s: float | None = None) -> pd.DataFrame:
+    """Run the sweep on the current records. Returns the long-format rows as a DataFrame.
+
+    `time_budget_s`: before starting an image, stop if this many seconds have passed since the sweep began;
+    the rows of the images done so far are returned (`df.attrs["stopped_early"]` is True), so a Slurm limit
+    does not lose the whole run. `boundary=False` skips the step-0 Boundary IoU (no sweep summary uses it;
+    it is about a third of the CPU work per row). `df.attrs["timing"]` holds the seconds spent per phase
+    (SAM prediction, upsampling, metrics, correction rollouts), also printed with an ETA every `log_every` images.
+    """
     unknown = set(methods) - set(METHODS)
     if unknown:
         raise ValueError(f"unknown methods {sorted(unknown)}; choose from {METHODS}")
@@ -60,19 +67,31 @@ def run_sweep(segmenter, records, *, run_id: str, levels: dict = SWEEP_LEVELS, m
         by_image[r.image_id].append(r)
     image_ids = sorted(by_image)[:max_images]
     rows, t0 = [], time.time()
+    timing = {"predict": 0.0, "to_full_res": 0.0, "metrics": 0.0, "rollout": 0.0}
+    done, stopped = 0, False
 
     for n, image_id in enumerate(image_ids, 1):
+        if time_budget_s is not None and time.time() - t0 >= time_budget_s:
+            stopped = True
+            print(f"[sweep] time budget of {time_budget_s:.0f}s reached after {done}/{len(image_ids)} images; "
+                  "keeping what is done", flush=True)
+            break
         objs = by_image[image_id]
         cache: dict[str, np.ndarray] = {}
         segmenter.set_image(image_id)
         prompts = [(rec, i, p) for rec in objs
                    for i, p in enumerate(sweep_prompts(rec.gt_box, tuple(rec.gt_mask["size"]),
                                                        object_rng(seed, rec.obj_id), levels))]
-        t = time.perf_counter()
+        t_a = time.perf_counter()
         outs = segmenter.predict([p for _, _, p in prompts])
+        t_b = time.perf_counter()
         fulls = [segmenter.to_full_res(o.mask_logits).float().cpu().numpy() for o in outs]
-        ms = (time.perf_counter() - t) * 1000 / max(1, len(prompts))
+        t_c = time.perf_counter()
+        ms = (t_c - t_a) * 1000 / max(1, len(prompts))
+        timing["predict"] += t_b - t_a
+        timing["to_full_res"] += t_c - t_b
 
+        t_m, roll_before = time.perf_counter(), timing["rollout"]
         for (rec, pid, prompt), out, full in zip(prompts, outs, fulls):
             sev = severity_columns(describe(prompt, rec, objs, mask_cache=cache))
             gt = cache[rec.obj_id]
@@ -80,22 +99,33 @@ def run_sweep(segmenter, records, *, run_id: str, levels: dict = SWEEP_LEVELS, m
                           prompt_origin=prompt.origin, **_pert_fields(prompt), **sev, category=rec.category_name,
                           novelty=rec.novelty, size_bin=rec.size_bin, thinness=rec.thinness, area=rec.area)
             s0 = Step(0, prompt, out, full > 0, ms, 1)
-            b0 = boundary_iou(s0.mask, gt)
+            b0 = boundary_iou(s0.mask, gt) if boundary else NAN
             for method in methods:
                 if method == "b0_none":
                     traj = [s0]
                 else:
                     rule = _oracle_rule(gt) if method == "oracle_clicks" else None
+                    t_r = time.perf_counter()
                     traj = rollout(segmenter, method, prompt, steps, object_rng(seed, rec.obj_id, pid, method),
                                    first=(s0, full), rule=rule)
+                    timing["rollout"] += time.perf_counter() - t_r
                 for s in traj:
                     rows.append(dict(common, method=check_method(method), step=s.step, iou=iou(s.mask, gt),
                                      boundary_iou=b0 if s.step == 0 else (boundary_iou(s.mask, gt) if boundary_all else NAN),
                                      pred_iou=s.output.iou_score, n_points=len(s.prompt.points),
                                      n_decoder_calls=s.n_decoder_calls, latency_ms=s.latency_ms))
+        timing["metrics"] += time.perf_counter() - t_m - (timing["rollout"] - roll_before)
+        done = n
         if log_every and n % log_every == 0:
-            print(f"[sweep] {n}/{len(image_ids)} images, {len(rows)} rows, {time.time() - t0:.0f}s", flush=True)
-    return pd.DataFrame(rows)
+            el = time.time() - t0
+            print(f"[sweep] {n}/{len(image_ids)} images, {len(rows)} rows, {el:.0f}s elapsed, "
+                  f"ETA {el / n * (len(image_ids) - n):.0f}s | seconds: predict {timing['predict']:.0f}, "
+                  f"upsample {timing['to_full_res']:.0f}, metrics {timing['metrics']:.0f}, "
+                  f"rollout {timing['rollout']:.0f}", flush=True)
+    df = pd.DataFrame(rows)
+    df.attrs.update(timing={k: round(v, 1) for k, v in timing.items()}, images_done=done,
+                    images_total=len(image_ids), stopped_early=stopped)
+    return df
 
 
 # ---- summaries (raw values in, tables out; docs/interfaces.md section 5) ---------------------------------
@@ -103,6 +133,7 @@ def run_sweep(segmenter, records, *, run_id: str, levels: dict = SWEEP_LEVELS, m
 THRESHOLDS = (0.5, 0.75)
 BOX_IOU_BINS = (0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0001)
 HARM_EPS = 0.01  # harm = final IoU < step-0 IoU - 0.01 (docs/interfaces.md section 5)
+MIN_BIN_N = 5  # by-box-IoU cells with fewer prompts than this are blanked in the summary and figure
 
 
 def _step0(df: pd.DataFrame) -> pd.DataFrame:
@@ -124,13 +155,15 @@ def sensitivity(df: pd.DataFrame) -> pd.DataFrame:
     return g.groupby(["pert_type", "pert_level"], dropna=False).agg(**agg).round(3)
 
 
-def by_box_iou(df: pd.DataFrame) -> pd.DataFrame:
+def by_box_iou(df: pd.DataFrame, min_n: int = 1) -> pd.DataFrame:
     """No correction: mean mask IoU per bin of the prompt's box IoU with the GT box, per type (comparable
-    across types, and with real detector boxes)."""
+    across types, and with real detector boxes). Cells with fewer than `min_n` prompts are left empty
+    (NaN): a mean over one or two prompts is noise, not a result."""
     g = _step0(df)
     g["box_iou_bin"] = pd.cut(g.box_iou_in, BOX_IOU_BINS, right=False)
-    return g.pivot_table(index="box_iou_bin", columns="pert_type", values="iou", aggfunc="mean",
-                         observed=False).round(3)
+    mean = g.pivot_table(index="box_iou_bin", columns="pert_type", values="iou", aggfunc="mean", observed=False)
+    count = g.pivot_table(index="box_iou_bin", columns="pert_type", values="iou", aggfunc="count", observed=False)
+    return mean.where(count >= min_n).round(3)
 
 
 def trajectories(df: pd.DataFrame) -> pd.DataFrame:
@@ -159,7 +192,7 @@ def method_table(df: pd.DataFrame, which: str = "perturbed") -> pd.DataFrame:
 
 
 def summarize(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    tables = {"sensitivity": sensitivity(df), "iou_by_box_iou": by_box_iou(df)}
+    tables = {"sensitivity": sensitivity(df), "iou_by_box_iou": by_box_iou(df, min_n=MIN_BIN_N)}
     if df.method.nunique() > 1 or df.step.max() > 0:
         tables["methods_perturbed"] = method_table(df, "perturbed")
         tables["methods_clean"] = method_table(df, "clean")

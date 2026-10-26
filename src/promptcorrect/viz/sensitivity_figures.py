@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 from promptcorrect.perturb.box import IDENTITY
-from promptcorrect.perturb.sweep import by_box_iou, method_table, sensitivity, trajectories
+from promptcorrect.perturb.sweep import MIN_BIN_N, by_box_iou, method_table, sensitivity, trajectories
 
 # Shared plot style, defined here so this module is self-contained.
 SURFACE, INK, INK2, INK3, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#85847f", "#e4e3df"
@@ -103,7 +103,7 @@ def sensitivity_curves(df: pd.DataFrame, out: Path) -> Path:
 def iou_vs_box_iou(df: pd.DataFrame, out: Path) -> Path:
     """Mean mask IoU per box-IoU bin, one line per type: puts all perturbation types on one severity axis."""
     _style()
-    t = by_box_iou(df)
+    t = by_box_iou(df, min_n=MIN_BIN_N)
     x = np.array([iv.left + (min(iv.right, 1.0) - iv.left) / 2 for iv in t.index])
     fig, ax = plt.subplots(figsize=(8.4, 5.0))
     ends = []

@@ -1,16 +1,27 @@
 """Sensitivity sweep (and optionally baselines vs ideal clicks) on perturbed GT boxes. See
 promptcorrect/perturb/sweep.py.
 
-    # IoU vs shift / scale / truncation, no correction (~18 boxes per object, batched per image):
-    sbatch --account=eecs542f26s001_class --time=01:00:00 slurm/run_gpu.sbatch \
-        scripts/run_sensitivity.py --paths configs/paths/greatlakes.yaml --run-id demo_sens_1
+Measured on an A40 node (5 images, 720 prompts): about 95 ms per prompt, so the full 487 images (about 53k prompts)
+take about 85 minutes after a 5-10 minute cold start. Size the job to fit, and set --time-budget-min below the Slurm
+--time so a slow node saves what it has instead of losing everything:
 
-    # baselines and ideal clicks on a coarser grid (one decoder call per click):
+    # recommended for a talk-sized result: 200 images (about 1,200 objects), about 35 minutes
+    sbatch --account=eecs542f26s001_class --time=01:30:00 slurm/run_gpu.sbatch \
+        scripts/run_sensitivity.py --paths configs/paths/greatlakes.yaml --run-id demo_sens_1 \
+        --max-images 200 --no-boundary --time-budget-min 70
+
+    # the whole set (about 85 minutes)
+    sbatch --account=eecs542f26s001_class --time=02:30:00 slurm/run_gpu.sbatch \
+        scripts/run_sensitivity.py --paths configs/paths/greatlakes.yaml --run-id demo_sens_full \
+        --no-boundary --time-budget-min 130
+
+    # baselines and ideal clicks on a coarser grid (one decoder call per click)
     sbatch --account=eecs542f26s001_class --time=02:00:00 slurm/run_gpu.sbatch \
         scripts/run_sensitivity.py --paths configs/paths/greatlakes.yaml --run-id demo_baselines_1 \
-        --methods all --steps 3 --levels shift=0.2,0.4 scale=0.67,1.5 truncate=0.3
+        --methods all --steps 3 --levels shift=0.2,0.4 scale=0.67,1.5 truncate=0.3 --time-budget-min 100
 
-Local check without a GPU: `--backend dummy --max-images 5` (needs the records file; dummy IoUs mean nothing).
+Progress and an ETA print every --log-every images. Local check without a GPU: `--backend dummy --max-images 5`
+(needs the records file; dummy IoUs mean nothing).
 Writes $RUNS_ROOT/<run-id>/{results.parquet, config.yaml, sweep_manifest.json, summary_*.csv}.
 """
 
@@ -40,6 +51,7 @@ def parse_levels(items: list[str] | None) -> dict[str, tuple[float, ...]]:
 
 
 def main() -> None:
+    t_script = time.time()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--paths", required=True)
     ap.add_argument("--run-id", required=True)
@@ -51,6 +63,12 @@ def main() -> None:
     ap.add_argument("--steps", type=int, default=3, help="correction steps per method")
     ap.add_argument("--max-images", type=int, help="first N images only (quick test)")
     ap.add_argument("--boundary-all", action="store_true", help="Boundary IoU at every step (slow)")
+    ap.add_argument("--no-boundary", action="store_true",
+                    help="skip the step-0 Boundary IoU (no sweep summary uses it; saves about a third of the CPU time)")
+    ap.add_argument("--time-budget-min", type=float,
+                    help="stop starting new images after this many minutes (counted from script start); "
+                         "keep it below the Slurm --time, which also pays for startup and writing")
+    ap.add_argument("--log-every", type=int, default=10, help="progress line every N images")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
@@ -72,10 +90,18 @@ def main() -> None:
 
         segmenter = DummySegmenter(records)
 
+    budget = None
+    if args.time_budget_min is not None:  # what is left after imports and the model load
+        budget = max(0.0, args.time_budget_min * 60 - (time.time() - t_script))
     t0 = time.time()
     df = run_sweep(segmenter, records, run_id=args.run_id, levels=levels, methods=methods, steps=args.steps,
-                   seed=args.seed, boundary_all=args.boundary_all, max_images=args.max_images)
+                   seed=args.seed, boundary_all=args.boundary_all, boundary=not args.no_boundary,
+                   max_images=args.max_images, log_every=args.log_every, time_budget_s=budget)
     seconds = time.time() - t0
+    if df.empty:
+        raise SystemExit("No rows: the time budget ran out before the first image finished. Raise --time-budget-min.")
+    if df.attrs["stopped_early"]:
+        print(f"WARNING: stopped early, {df.attrs['images_done']} of {df.attrs['images_total']} images are in the results.")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out_dir / "results.parquet", index=False)
@@ -85,6 +111,9 @@ def main() -> None:
     manifest = {
         "levels": {k: list(v) for k, v in levels.items()}, "methods": list(methods), "steps": args.steps,
         "backend": args.backend, "max_images": args.max_images, "seconds": round(seconds, 1), "n_rows": len(df),
+        "images_done": df.attrs["images_done"], "images_total": df.attrs["images_total"],
+        "stopped_early": df.attrs["stopped_early"], "seconds_by_phase": df.attrs["timing"],
+        "boundary_iou_step0": not args.no_boundary,
         "n_objects": int(df.obj_id.nunique()), "n_images": int(df.image_id.nunique()), "git_commit": commit,
         "inputs": {"records_sha256": file_sha256(records_file)},
         "notes": "boundary_iou is step 0 only unless --boundary-all; SAM 3 hole filling is off (see CLAUDE.md)",

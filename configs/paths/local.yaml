@@ -1,6 +1,7 @@
 # Laptop paths (used when PC_PATHS is unset or "local").
-# Relative paths resolve against the repo root. _local/ is gitignored.
-data_root: _local/data
-cache_root: _local/cache
-ckpt_root: _local/ckpt
-runs_root: _local/runs
+# Relative paths resolve against THIS file's folder (the same rule for load_paths() and for every script that
+# uses rooted_path()), so ../../_local is <repo>/_local. _local/ is gitignored.
+data_root: ../../_local/data
+cache_root: ../../_local/cache
+ckpt_root: ../../_local/ckpt
+runs_root: ../../_local/runs
