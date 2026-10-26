@@ -1,6 +1,6 @@
 # Shared interfaces and formats
 
-**Status:** Draft v0.2 (2026-10-25). v0.1 was transcribed from `CV_Project_Revised_Plan.pdf` (AI-suggested, not yet signed off by the team); v0.2 adds P3's decisions (results location, method names, `iou`/`boundary_iou`/`match` contracts).
+**Status:** Draft v0.3 (2026-10-25). v0.1 was transcribed from `CV_Project_Revised_Plan.pdf` (AI-suggested, not yet signed off by the team); v0.2 adds P3's decisions (results location, method names, `iou`/`boundary_iou`/`match` contracts).
 **Purpose:** one place that defines every format two roles must agree on, so nobody writes converters or hits coordinate bugs.
 **Overrides:** this doc is the detailed contract behind `CLAUDE.md` section 7. Once `src/promptcorrect/types.py` exists, the code and this doc must say the same thing; if they differ, fix the one that is wrong in the same PR.
 
@@ -88,7 +88,8 @@ describe(prompt, obj) -> {box_iou, coverage, contamination, delta}
   - `contamination`: fraction of the box covered by other objects' masks (distractor inclusion).
   - `delta`: `(dcx/w, dcy/h, log s_w, log s_h)` relative to the GT box.
   - RQ2 depends on synthetic and real errors being measured by the same code, hence one function.
-- **[Open]** O3: `describe` needs the other objects in the image to compute `contamination`; its signature takes only `(prompt, obj)`. Point-only prompts have no box, so the box fields must be defined (NaN/None).
+- **Decided by P4 (O3), implemented in `perturb/severity.py`:** the signature is `describe(prompt, obj, neighbors, *, mask_cache=None)`. `neighbors` = the other object records of the image (`obj` itself is skipped if passed; crowd and size-filtered annotations are not records, so they never count). A box covers the pixels whose *centre* lies inside it, so a GT box has `coverage = 1`. `contamination` counts neighbour pixels that are not also `obj`'s own pixels, divided by the box's pixel count. Point-only prompts get NaN for every field. `severity_columns(sev)` maps the result to the ResultRow names (`box_iou_in, coverage, contamination, delta_cx, delta_cy, delta_log_sw, delta_log_sh`). `mask_cache` (obj_id -> bool mask) is an optional speed-up for sweeps.
+- **`perturbation` dict (P4, `perturb/box.py`):** `{"type": "shift" | "scale" | "truncate", "level": float, "params": {...}}`. `level` is what sensitivity curves are plotted against: shift = displacement as a fraction of the GT box size (`offset = level * (w cos a, h sin a)`), scale = side-length factor around the centre, truncate = fraction cut off one side. `params` holds the free choices (`angle`/`dx`/`dy`, `factor`, `side`) and `clipped` (box was clipped to the image). Unperturbed prompts have `perturbation=None`. ResultRow `pert_type`/`pert_level` copy `type`/`level`.
 
 ---
 
@@ -288,7 +289,8 @@ Recommended resolutions are suggestions, not decisions. **Before coding starts:*
 
 **Status after v0.2 (2026-10-25):**
 - **O11, O12:** decided by P3 (section 5). `match` output contract and the Boundary IoU dilation ratio are fixed too (section 7).
-- **O4:** columns proposed by P3 in section 5; waiting for P4 to confirm they match `describe()`'s `delta`.
+- **O4:** accepted by P4 (2026-10-25). `delta = (delta_cx, delta_cy, delta_log_sw, delta_log_sh)` in that order, exactly the proposed columns; `severity_columns()` produces them.
+- **O3:** decided by P4 (section 2): `describe(prompt, obj, neighbors)`, NaN for point-only prompts.
 - **O1:** settled. P2's builder uses `box_w < 32 and box_h < 32` (branch `p2/week1-data-detectors`). P3 derives ignore masks from the original annotations (section 7), so no extra export is needed from P2.
 
 Notes outside the formats, for the extra datasets: images from ThinObject/DIS/SA-Co have no COCO integer `image_id`; if they are added later (stretch), `image_id` needs a namespace such as `"dis:0123"`.
@@ -300,4 +302,5 @@ Notes outside the formats, for the extra datasets: images from ThinObject/DIS/SA
 - 2026-10-23: v0.1 draft transcribed from `CV_Project_Revised_Plan.pdf`; open issues O1–O13 collected.
 - 2026-10-23: scaffold implements these in `src/promptcorrect/types.py`: `ResultRow` includes the proposed Δ columns (O4); `Segmenter` is an ABC with a `make_segmenter` factory and `SegOutput.alt_*` fields (O5). Review and either accept or revise.
 - 2026-10-25 (P1, Srikrishnan): SAM 3 smoke test passed (23 checks). Resolved O5, O6, O13: SAM 3 low-res logits are 288 x 288, presence exists only on the text path, `detect_text` sorted and clipped, box batching. Implemented `Sam3Segmenter` (`segmenters/sam3.py`).
+- 2026-10-25 (P4, Aman): v0.3. Decided O3 (`describe(prompt, obj, neighbors)` with the pixel-centre convention), accepted O4, documented the `perturbation` dict and `level` semantics (section 2).
 - 2026-10-25 (P3, Divya): v0.2. Decided O11 (results under `$RUNS_ROOT/{run_id}/`, git index `results/runs_index.csv`) and O12 (method registry in `eval/methods.py`, adds `b2_multimask`). Fixed `iou`/`boundary_iou` (bool masks, dilation 0.02) and `match` contracts. Proposed O4 columns and a `detected` column; settled O1 (ignore masks derived from the original annotations).

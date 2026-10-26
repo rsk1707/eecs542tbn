@@ -1,6 +1,8 @@
-"""Owner: P4 (Aman). Rule-based baselines using only the Segmenter interface.
+"""Owner: P4 (Aman). Rule-based baselines using only the Segmenter interface (see baselines/rules.py).
 
-Planned (method names are P3's registry): b1_random_k (random positive points inside the box),
-b3_box_refit (refit the box to the current mask and rerun), b3_unc_click (click at the centre of the
-largest region where |logit| is small).
+Method names are P3's registry: b0_none, b1_random_k, b2_multimask, b3_box_refit, b3_unc_click.
 """
+
+from promptcorrect.baselines.rules import METHODS, RULES, Step, rollout
+
+__all__ = ["METHODS", "RULES", "Step", "rollout"]
