@@ -58,3 +58,18 @@ def test_rooted_paths(tmp_path):
     paths.write_text("DATA_ROOT: datasets\nCACHE_ROOT: /tmp/cache\n")
     assert rooted_path(paths, "DATA_ROOT", "objects.jsonl") == tmp_path / "datasets/objects.jsonl"
     assert rooted_path(paths, "CACHE_ROOT", "detections/a.jsonl").as_posix() == "/tmp/cache/detections/a.jsonl"
+
+
+def test_new_files_get_normal_permissions(tmp_path):
+    """mkstemp's 0600 would lock teammates out of the ACL-shared scratch dir."""
+    import os
+
+    from promptcorrect.data.io import new_text_file
+
+    old = os.umask(0o002)
+    try:
+        with new_text_file(tmp_path / "out.jsonl") as f:
+            f.write("{}\n")
+    finally:
+        os.umask(old)
+    assert (tmp_path / "out.jsonl").stat().st_mode & 0o777 == 0o664
