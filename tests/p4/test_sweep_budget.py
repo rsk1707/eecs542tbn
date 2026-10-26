@@ -27,7 +27,7 @@ def test_time_budget_keeps_finished_images(objects):
 def test_no_budget_runs_everything_and_reports_timing(objects, capsys):
     df = run_sweep(DummySegmenter(objects), objects, run_id="t", log_every=1)
     assert df.attrs["stopped_early"] is False and df.attrs["images_done"] == 3
-    assert set(df.attrs["timing"]) == {"predict", "to_full_res", "metrics", "rollout"}
+    assert set(df.attrs["timing"]) == {"encode", "predict", "to_full_res", "metrics", "rollout"}
     out = capsys.readouterr().out
     assert "[sweep] 3/3 images" in out and "ETA" in out
 

@@ -34,11 +34,10 @@ on SAM 3 yet**; the commands below are ready for GreatLakes.
 export PC_ROOT=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn
 A=--account=eecs542f26s001_class; P=configs/paths/greatlakes.yaml
 
-# 1. Sensitivity sweep, no correction. Talk-sized: 200 images (about 1,200 objects, about 35 min + startup).
+# 1. Sensitivity sweep, no correction: the whole set takes about 10 minutes (+ 5-10 min cold start).
 #    --time-budget-min stops cleanly and SAVES what is done if the node is slow (keep it below --time).
-sbatch $A --time=01:30:00 slurm/run_gpu.sbatch scripts/run_sensitivity.py --paths $P --run-id demo_sens_1     --max-images 200 --no-boundary --time-budget-min 70
-#    The whole set (487 images, about 53k prompts, about 85 min + startup):
-#    sbatch $A --time=02:30:00 slurm/run_gpu.sbatch scripts/run_sensitivity.py --paths $P --run-id demo_sens_full #        --no-boundary --time-budget-min 130
+sbatch $A --time=00:45:00 slurm/run_gpu.sbatch scripts/run_sensitivity.py --paths $P --run-id demo_sens_full \
+    --no-boundary --time-budget-min 35
 
 # 2. Baselines vs ideal clicks on a coarser grid (one decoder call per step, so fewer prompts)
 sbatch $A --time=02:00:00 slurm/run_gpu.sbatch scripts/run_sensitivity.py --paths $P --run-id demo_baselines_1 \
@@ -49,14 +48,15 @@ python scripts/make_sensitivity_figures.py --paths $P --run-id demo_sens_1
 python scripts/make_sensitivity_figures.py --paths $P --run-id demo_baselines_1
 ```
 
-Measured on an A40 node (job 64785358, 5 images, 40 objects, 720 prompts): 68.7 s of sweep, about 95 ms per prompt,
-plus 5-10 minutes of cold start (imports and model load) that the script's own timer does not count. That puts the
-full set at about 85 minutes, so the earlier `--time=01:00:00` for the full sweep would have timed out and, because
-results are written at the end, saved nothing. `--time-budget-min` fixes the second part; the first is just sizing.
-On a cluster core the per-prompt CPU work (mask IoU, severity, and Boundary IoU, which `--no-boundary` skips) is
-likely the bottleneck rather than the GPU. The progress line printed every `--log-every` images (default 10) now
-shows an ETA and the seconds spent in prediction, upsampling, metrics and rollouts, and `sweep_manifest.json`
-records the same split (`seconds_by_phase`), `images_done` and `stopped_early`. Job 2 (baselines) has ~2.9k
+Measured on an A40 node. Job 64785358 (5 images, 720 prompts) took 68.7 s; job 64788454 (200 images, 1,390 objects,
+25,020 prompts, `--no-boundary`) took 299 s, of which about 110 s is a one-time warm-up in the first images
+(image load and encode, first SAM calls), then about 0.9 s per image (about 12 ms per prompt). The full 487 images
+therefore take about 10 minutes, plus a 5-10 minute cold start the script's own timer does not count. (P1's first
+estimate of 85 minutes extrapolated from the 5-image run, which was mostly warm-up, and was wrong; the earlier
+`--time=01:00:00` would have been enough after all.) `--time-budget-min` stays as a safeguard. The progress line
+printed every `--log-every` images shows an ETA and the seconds spent in encode, prediction, upsampling, metrics and
+rollouts, and `sweep_manifest.json` records the same split (`seconds_by_phase`), `images_done` and `stopped_early`.
+Job 2 (baselines) has ~2.9k
 objects x 6 prompts x 5 methods x 3 steps = ~260k decoder calls, about 25 min of decoder time plus CPU metrics;
 use `--max-images` first, and `--time-budget-min` here too.
 

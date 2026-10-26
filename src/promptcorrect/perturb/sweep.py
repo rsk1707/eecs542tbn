@@ -57,7 +57,7 @@ def run_sweep(segmenter, records, *, run_id: str, levels: dict = SWEEP_LEVELS, m
     the rows of the images done so far are returned (`df.attrs["stopped_early"]` is True), so a Slurm limit
     does not lose the whole run. `boundary=False` skips the step-0 Boundary IoU (no sweep summary uses it;
     it is about a third of the CPU work per row). `df.attrs["timing"]` holds the seconds spent per phase
-    (SAM prediction, upsampling, metrics, correction rollouts), also printed with an ETA every `log_every` images.
+    (image load and encode, SAM prediction, upsampling, metrics, correction rollouts), also printed with an ETA every `log_every` images.
     """
     unknown = set(methods) - set(METHODS)
     if unknown:
@@ -67,7 +67,7 @@ def run_sweep(segmenter, records, *, run_id: str, levels: dict = SWEEP_LEVELS, m
         by_image[r.image_id].append(r)
     image_ids = sorted(by_image)[:max_images]
     rows, t0 = [], time.time()
-    timing = {"predict": 0.0, "to_full_res": 0.0, "metrics": 0.0, "rollout": 0.0}
+    timing = {"encode": 0.0, "predict": 0.0, "to_full_res": 0.0, "metrics": 0.0, "rollout": 0.0}
     done, stopped = 0, False
 
     for n, image_id in enumerate(image_ids, 1):
@@ -78,7 +78,9 @@ def run_sweep(segmenter, records, *, run_id: str, levels: dict = SWEEP_LEVELS, m
             break
         objs = by_image[image_id]
         cache: dict[str, np.ndarray] = {}
+        t_e = time.perf_counter()
         segmenter.set_image(image_id)
+        timing["encode"] += time.perf_counter() - t_e
         prompts = [(rec, i, p) for rec in objs
                    for i, p in enumerate(sweep_prompts(rec.gt_box, tuple(rec.gt_mask["size"]),
                                                        object_rng(seed, rec.obj_id), levels))]
@@ -119,7 +121,7 @@ def run_sweep(segmenter, records, *, run_id: str, levels: dict = SWEEP_LEVELS, m
         if log_every and n % log_every == 0:
             el = time.time() - t0
             print(f"[sweep] {n}/{len(image_ids)} images, {len(rows)} rows, {el:.0f}s elapsed, "
-                  f"ETA {el / n * (len(image_ids) - n):.0f}s | seconds: predict {timing['predict']:.0f}, "
+                  f"ETA {el / n * (len(image_ids) - n):.0f}s | seconds: encode {timing['encode']:.0f}, predict {timing['predict']:.0f}, "
                   f"upsample {timing['to_full_res']:.0f}, metrics {timing['metrics']:.0f}, "
                   f"rollout {timing['rollout']:.0f}", flush=True)
     df = pd.DataFrame(rows)

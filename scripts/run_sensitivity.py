@@ -1,21 +1,25 @@
 """Sensitivity sweep (and optionally baselines vs ideal clicks) on perturbed GT boxes. See
 promptcorrect/perturb/sweep.py.
 
-Measured on an A40 node (5 images, 720 prompts): about 95 ms per prompt, so the full 487 images (about 53k prompts)
-take about 85 minutes after a 5-10 minute cold start. Size the job to fit, and set --time-budget-min below the Slurm
---time so a slow node saves what it has instead of losing everything:
+Measured on an A40 node (job 64788454: 200 images, 1,390 objects, 25,020 prompts): 299 s in total, of which about
+110 s is a one-time warm-up while the first images are loaded and encoded, then about 0.9 s per image. The whole set
+(487 images, about 53k prompts) therefore takes about 10 minutes, plus 5-10 minutes of cold start before the sweep
+begins. (An earlier estimate of 85 minutes extrapolated from a 5-image run that was mostly warm-up; it was wrong.)
+--time-budget-min is a safeguard: keep it below the Slurm --time and a slow node saves what it has instead of
+losing everything.
 
-    # recommended for a talk-sized result: 200 images (about 1,200 objects), about 35 minutes
-    sbatch --account=eecs542f26s001_class --time=01:30:00 slurm/run_gpu.sbatch \
-        scripts/run_sensitivity.py --paths configs/paths/greatlakes.yaml --run-id demo_sens_1 \
-        --max-images 200 --no-boundary --time-budget-min 70
-
-    # the whole set (about 85 minutes)
-    sbatch --account=eecs542f26s001_class --time=02:30:00 slurm/run_gpu.sbatch \
+    # the whole set (about 10 minutes + startup)
+    sbatch --account=eecs542f26s001_class --time=00:45:00 slurm/run_gpu.sbatch \
         scripts/run_sensitivity.py --paths configs/paths/greatlakes.yaml --run-id demo_sens_full \
-        --no-boundary --time-budget-min 130
+        --no-boundary --time-budget-min 35
 
-    # baselines and ideal clicks on a coarser grid (one decoder call per click)
+    # a quick look at a subset
+    sbatch --account=eecs542f26s001_class --time=00:30:00 slurm/run_gpu.sbatch \
+        scripts/run_sensitivity.py --paths configs/paths/greatlakes.yaml --run-id demo_sens_1 \
+        --max-images 200 --no-boundary --time-budget-min 20
+
+    # baselines and ideal clicks on a coarser grid (one decoder call per click; time one small run first with
+    # --max-images 5 and read the rollout seconds in the progress line before sizing the real one)
     sbatch --account=eecs542f26s001_class --time=02:00:00 slurm/run_gpu.sbatch \
         scripts/run_sensitivity.py --paths configs/paths/greatlakes.yaml --run-id demo_baselines_1 \
         --methods all --steps 3 --levels shift=0.2,0.4 scale=0.67,1.5 truncate=0.3 --time-budget-min 100
