@@ -163,10 +163,11 @@ Long format: **one row per (object, method, step)**, saved as a Parquet file per
 |---|---|
 | `run_id`, `obj_id`, `image_id`, `method`, `step` | `step` 0 = initial mask before any correction |
 | `iou`, `boundary_iou` | one shared `metrics.py`; nobody re-implements IoU |
-| `prompt_origin`, `pert_type`, `pert_level` | from the Prompt |
+| `prompt_origin`, `pert_type`, `pert_level` | from the Prompt. RQ0 uses `gt`, `grounding_dino`, `sam3_text` (text box -> interactive head) and `sam3_text_mask` (text mask as is) |
 | `box_iou_in`, `coverage`, `contamination` | from `describe()`, so results can be binned by severity |
 | `novelty`, `size_bin`, `thinness` | copied from the object record so grouping needs no join |
 | `n_decoder_calls`, `latency_ms` | cost columns |
+| `n_points`, `detected`, `det_score`, `pred_iou` | points in the prompt; matched by a detection; that detection's score; the segmenter's predicted IoU |
 
 - **Store only raw values.** Success@0.75, harm rate and transfer ratio are computed when analyzing results, from these columns.
 - **Harm** is defined once: `iou_final < iou_step0 - 0.01`.
@@ -186,8 +187,9 @@ Long format: **one row per (object, method, step)**, saved as a Parquet file per
   | `corrector_v<n>` | learned corrector, version n (e.g. `corrector_v0`) |
 
   New methods are added by a PR to the registry, not by writing a new string.
-- **[Proposed by P3, needs P4 ack] O4 columns:** `delta_cx, delta_cy, delta_log_sw, delta_log_sh` (float, from `describe()`, NaN when there is no box) and `n_points` (int, points in the prompt at this step).
-- **[Proposed by P3] `detected` column (bool):** `False` for a GT object that no detection matched (see `match()` in section 7). Those objects get one step-0 row with `iou = 0` and are reported as *missed*, separately from *detected but poor mask*. Always `True` for GT-box and perturbed-GT prompts.
+- **Writer:** `eval/results.py`. `write_results(rows, paths.run_dir(run_id))` validates the rows (registered method, one run_id that matches the directory, unique (obj_id, prompt_origin, pert_type, pert_level, method, step), step ≥ 0), writes with fixed dtypes and refuses to overwrite by default. `read_results(run_dir)` reads it back. `update_runs_index(run_id, owner, runs_path, notes, headline={...})` adds or replaces the run's row in `results/runs_index.csv`.
+- **[Proposed by P3, needs P4 ack] O4 columns:** `delta_cx, delta_cy, delta_log_sw, delta_log_sh` (float, from `describe()`, NaN when there is no box).
+- **`detected` (added by P3, 2026-10-25):** `False` for a GT object that no detection matched (see `match()` in section 7). Those objects get one step-0 row with `iou = 0` and are reported as *missed*, separately from *detected but poor mask*. Always `True` for GT-box and perturbed-GT prompts.
 
 ---
 
@@ -234,7 +236,7 @@ boundary_iou(pred, gt, dilation_ratio=0.02) -> float
 - Empty prediction → 0. Empty GT → `ValueError` (such objects are filtered out of the records).
 - Boundary IoU follows Cheng et al. (CVPR 2021) and the official `boundary-iou-api`: boundary width `d = round(0.02 × image diagonal)`, minimum 1 px; checked to give identical boundaries to the official OpenCV code.
 
-### `match` (decided by P3, implementation in progress)
+### `match` (decided by P3, implemented in `src/promptcorrect/eval/matching.py`)
 
 ```python
 @dataclass
@@ -247,9 +249,20 @@ class MatchResult:
 match(pred_masks, gt_masks, ignore_masks=(), min_iou=0.1, ignore_frac=0.5) -> MatchResult
 ```
 - One-to-one Hungarian matching that maximizes total mask IoU among non-ignored predictions; assigned pairs below `min_iou` are dropped and both sides count as unmatched.
-- A prediction is ignored if at least `ignore_frac` of its area lies inside the union of `ignore_masks` (COCO-style crowd handling). P3 builds the ignore masks from the original COCO annotations: every annotation of the image whose `obj_id` is **not** in the object records (crowds and size-filtered objects). The filter rule itself therefore lives only in P2's record builder (see O1).
+- A prediction is ignored if at least `ignore_frac` of its area lies inside the union of `ignore_masks` (COCO-style crowd handling). P3 builds the ignore masks from the original COCO annotations: every annotation of the image *with the same category* whose `obj_id` is **not** in the object records, as in COCO eval (crowds and size-filtered objects). The filter rule itself therefore lives only in P2's record builder (see O1).
 - Matching runs per `(image_id, phrase)`: detections for a phrase are matched only to GT objects of that category (detections are exported for GT-present phrases only, O9).
 - Used for the text path (secondary setting) **and** for detector boxes: each detection box is run through the segmenter and its mask is matched to GT, which tells us which GT object a detection belongs to.
+
+### Ideal clicks (P3, `src/promptcorrect/eval/oracle_clicks.py`)
+
+```python
+ideal_click(pred, gt, clicked=()) -> (x, y, label) | None
+run_oracle(segmenter, prompt, gt, max_clicks=5, start=None, use_prev_mask=True) -> OracleTrace  # ious, pred_ious, latency_ms, clicks
+noc(ious, thr, max_clicks) -> int; best_so_far(ious) -> list[float]
+```
+- RITM / SimpleClick rule: distance-transform the false-negative and false-positive regions (image border counts as boundary); click at the deepest pixel of whichever is deeper (positive for false negative, negative for false positive; ties go negative); already-clicked pixels are excluded. P5's click target uses the same function.
+- Clicks are added to the starting prompt (the box stays). With `use_prev_mask` the previous low-res logits go into `Prompt.mask_logits`, as in SAM's interactive mode.
+- IoU is not always monotone in clicks: report `best_so_far` for headroom curves and the raw IoU for harm. NoC counts 0 when the starting prompt already reaches the threshold; not reached → `max_clicks + 1`, reported with the not-reached rate.
 
 ---
 

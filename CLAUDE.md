@@ -250,6 +250,7 @@ Local dev: `pip install torch --index-url https://download.pytorch.org/whl/cpu &
 - 2026-10-23: Shared formats written up in `docs/interfaces.md` (draft v0.1, from `CV_Project_Revised_Plan.pdf`). Open issues O1–O13 there need team decisions; the revised plan's 10-week schedule is ignored in favour of section 6 here.
 - 2026-10-25: P4 (Aman) on branch `p4`: box perturbations (shift/scale/truncate, `perturb/box.py`), `describe()` (`perturb/severity.py`; O3 decided, O4 accepted, `docs/interfaces.md` v0.3), rule baselines b1/b2/b3 (`baselines/rules.py`), sensitivity sweep + baselines-vs-oracle runner (`perturb/sweep.py`, `scripts/run_sensitivity.py`) and figures. CPU tests on the dummy pass; **not yet run on SAM 3**. Commands and baseline assumptions: `docs/p4_week1.md`.
 - 2026-10-25: P3 (Divya) decided O11/O12 and fixed the `iou`/`boundary_iou`/`match` contracts (`docs/interfaces.md` v0.2). `eval/metrics.py` and `eval/methods.py` added with CPU tests. O1 settled; O4 waits on P4.
+- 2026-10-25: P3 added `match()`, the ideal-click simulator (RITM rule, previous logits fed back) and the RQ0 runner (`eval/rq0.py`, `scripts/run_rq0.py`). `ResultRow` gained optional `n_points`, `detected`, `det_score`, `pred_iou`; rows are unique per (obj_id, prompt_origin, pert_type, pert_level, method, step).
 
 ## 13. Keeping this file current
 

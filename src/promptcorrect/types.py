@@ -53,7 +53,7 @@ class SegOutput:  # owner: P1
 
 
 @dataclass
-class ResultRow:  # owner: P3; one row per (obj_id, method, step), saved as Parquet
+class ResultRow:  # owner: P3; one row per (obj_id, prompt_origin, pert_type, pert_level, method, step), saved as Parquet
     run_id: str
     obj_id: str
     image_id: int
@@ -77,3 +77,7 @@ class ResultRow:  # owner: P3; one row per (obj_id, method, step), saved as Parq
     thinness: float | None = None
     n_decoder_calls: int = 0             # cumulative up to and including this step
     latency_ms: float = 0.0              # this step only, excluding the image encoder
+    n_points: int = 0                    # points in the prompt at this step
+    detected: bool = True                # False: no detection matched this GT object (one step-0 row, iou 0)
+    det_score: float | None = None       # detector / SAM 3 text score of the matched detection
+    pred_iou: float | None = None        # the segmenter's own predicted IoU (SegOutput.iou_score)
