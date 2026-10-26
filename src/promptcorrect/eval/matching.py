@@ -1,7 +1,7 @@
 """Prediction-to-GT matching (docs/interfaces.md section 7). Owner: P3.
 
 Call once per (image_id, phrase): predictions for that phrase against the GT objects of that category.
-Ignore masks are the annotations of the image that are *not* in the object records (crowd or
+Ignore masks are the same-category annotations of the image that are *not* object records (crowd or
 size-filtered); build them from the original COCO annotations with `data.records.annotation_mask`.
 """
 

@@ -162,10 +162,11 @@ Long format: **one row per (object, method, step)**, saved as a Parquet file per
 |---|---|
 | `run_id`, `obj_id`, `image_id`, `method`, `step` | `step` 0 = initial mask before any correction |
 | `iou`, `boundary_iou` | one shared `metrics.py`; nobody re-implements IoU |
-| `prompt_origin`, `pert_type`, `pert_level` | from the Prompt |
+| `prompt_origin`, `pert_type`, `pert_level` | from the Prompt. RQ0 uses `gt`, `grounding_dino`, `sam3_text` (text box -> interactive head) and `sam3_text_mask` (text mask as is) |
 | `box_iou_in`, `coverage`, `contamination` | from `describe()`, so results can be binned by severity |
 | `novelty`, `size_bin`, `thinness` | copied from the object record so grouping needs no join |
 | `n_decoder_calls`, `latency_ms` | cost columns |
+| `n_points`, `detected`, `det_score`, `pred_iou` | points in the prompt; matched by a detection; that detection's score; the segmenter's predicted IoU |
 
 - **Store only raw values.** Success@0.75, harm rate and transfer ratio are computed when analyzing results, from these columns.
 - **Harm** is defined once: `iou_final < iou_step0 - 0.01`.
@@ -185,9 +186,9 @@ Long format: **one row per (object, method, step)**, saved as a Parquet file per
   | `corrector_v<n>` | learned corrector, version n (e.g. `corrector_v0`) |
 
   New methods are added by a PR to the registry, not by writing a new string.
-- **Writer:** `eval/results.py`. `write_results(rows, paths.run_dir(run_id))` validates the rows (registered method, one run_id that matches the directory, unique (obj_id, method, step), step ≥ 0), writes with fixed dtypes and refuses to overwrite by default. `read_results(run_dir)` reads it back. `update_runs_index(run_id, owner, runs_path, notes, headline={...})` adds or replaces the run's row in `results/runs_index.csv`.
-- **[Proposed by P3, needs P4 ack] O4 columns:** `delta_cx, delta_cy, delta_log_sw, delta_log_sh` (float, from `describe()`, NaN when there is no box) and `n_points` (int, points in the prompt at this step).
-- **[Proposed by P3] `detected` column (bool):** `False` for a GT object that no detection matched (see `match()` in section 7). Those objects get one step-0 row with `iou = 0` and are reported as *missed*, separately from *detected but poor mask*. Always `True` for GT-box and perturbed-GT prompts.
+- **Writer:** `eval/results.py`. `write_results(rows, paths.run_dir(run_id))` validates the rows (registered method, one run_id that matches the directory, unique (obj_id, prompt_origin, pert_type, pert_level, method, step), step ≥ 0), writes with fixed dtypes and refuses to overwrite by default. `read_results(run_dir)` reads it back. `update_runs_index(run_id, owner, runs_path, notes, headline={...})` adds or replaces the run's row in `results/runs_index.csv`.
+- **[Proposed by P3, needs P4 ack] O4 columns:** `delta_cx, delta_cy, delta_log_sw, delta_log_sh` (float, from `describe()`, NaN when there is no box).
+- **`detected` (added by P3, 2026-10-25):** `False` for a GT object that no detection matched (see `match()` in section 7). Those objects get one step-0 row with `iou = 0` and are reported as *missed*, separately from *detected but poor mask*. Always `True` for GT-box and perturbed-GT prompts.
 
 ---
 
@@ -247,7 +248,7 @@ class MatchResult:
 match(pred_masks, gt_masks, ignore_masks=(), min_iou=0.1, ignore_frac=0.5) -> MatchResult
 ```
 - One-to-one Hungarian matching that maximizes total mask IoU among non-ignored predictions; assigned pairs below `min_iou` are dropped and both sides count as unmatched.
-- A prediction is ignored if at least `ignore_frac` of its area lies inside the union of `ignore_masks` (COCO-style crowd handling). P3 builds the ignore masks from the original COCO annotations: every annotation of the image whose `obj_id` is **not** in the object records (crowds and size-filtered objects). The filter rule itself therefore lives only in P2's record builder (see O1).
+- A prediction is ignored if at least `ignore_frac` of its area lies inside the union of `ignore_masks` (COCO-style crowd handling). P3 builds the ignore masks from the original COCO annotations: every annotation of the image *with the same category* whose `obj_id` is **not** in the object records, as in COCO eval (crowds and size-filtered objects). The filter rule itself therefore lives only in P2's record builder (see O1).
 - Matching runs per `(image_id, phrase)`: detections for a phrase are matched only to GT objects of that category (detections are exported for GT-present phrases only, O9).
 - Used for the text path (secondary setting) **and** for detector boxes: each detection box is run through the segmenter and its mask is matched to GT, which tells us which GT object a detection belongs to.
 

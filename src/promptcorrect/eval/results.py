@@ -19,7 +19,7 @@ from promptcorrect.types import ResultRow
 
 RESULTS_FILE = "results.parquet"
 RUNS_INDEX = REPO_ROOT / "results" / "runs_index.csv"
-KEY = ["obj_id", "method", "step"]
+KEY = ["obj_id", "prompt_origin", "pert_type", "pert_level", "method", "step"]  # NaN == NaN here
 INDEX_COLUMNS = ["run_id", "owner", "date", "git_commit", "runs_path", "notes"]
 
 
@@ -46,7 +46,7 @@ def to_frame(rows: list[ResultRow]) -> pd.DataFrame:
         raise ValueError("step must be >= 0")
     dup = df.duplicated(KEY, keep=False)
     if dup.any():
-        raise ValueError(f"duplicate (obj_id, method, step) rows:\n{df.loc[dup, KEY].head()}")
+        raise ValueError(f"duplicate rows for key {KEY}:\n{df.loc[dup, KEY].head()}")
     return df
 
 
