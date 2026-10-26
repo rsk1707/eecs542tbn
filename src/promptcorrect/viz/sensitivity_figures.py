@@ -1,4 +1,4 @@
-"""Slide-ready figures for a sensitivity sweep (perturb/sweep.py), in the same style as rq0_figures.
+"""Slide-ready figures for a sensitivity sweep (perturb/sweep.py), in the shared slide style.
 
 Chart choices: IoU against perturbation level and against box IoU are lines (change over an ordered
 amount); correction methods against step are lines; harm rates are bars. Each perturbation type and each
@@ -20,7 +20,20 @@ import pandas as pd
 
 from promptcorrect.perturb.box import IDENTITY
 from promptcorrect.perturb.sweep import by_box_iou, method_table, sensitivity, trajectories
-from promptcorrect.viz.rq0_figures import GRID, INK, INK2, INK3, SURFACE, _style
+
+# Shared plot style, defined here so this module is self-contained.
+SURFACE, INK, INK2, INK3, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#85847f", "#e4e3df"
+
+
+def _style():
+    plt.rcParams.update({
+        "figure.facecolor": SURFACE, "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE,
+        "text.color": INK, "axes.labelcolor": INK2, "xtick.color": INK2, "ytick.color": INK2,
+        "axes.edgecolor": GRID, "font.size": 13, "axes.titlesize": 14, "axes.titleweight": "semibold",
+        "axes.spines.top": False, "axes.spines.right": False, "axes.titlelocation": "left",
+        "axes.grid": False, "lines.solid_capstyle": "round", "lines.solid_joinstyle": "round",
+    })
+
 
 TYPE_COLORS = {"shift": "#2a78d6", "scale": "#eb6834", "truncate": "#1baf7a"}
 TYPE_LABELS = {"shift": "shift (fraction of box size)", "scale": "scale factor", "truncate": "fraction cut off one side"}

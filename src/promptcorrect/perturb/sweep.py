@@ -23,7 +23,7 @@ from promptcorrect.baselines.rules import METHODS as BASELINES
 from promptcorrect.baselines.rules import Step, next_prompt, rollout
 from promptcorrect.eval.methods import check_method
 from promptcorrect.eval.metrics import boundary_iou, iou
-from promptcorrect.experiments.rq0 import oracle_click
+from promptcorrect.eval.oracle_clicks import ideal_click as oracle_click
 from promptcorrect.perturb.box import SWEEP_LEVELS, object_rng, sweep_prompts
 from promptcorrect.perturb.severity import describe, severity_columns
 from promptcorrect.types import ObjectRecord, Prompt
