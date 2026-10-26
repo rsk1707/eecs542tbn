@@ -24,7 +24,6 @@ dependencies = [
     "pandas>=2.1",
     # pyarrow 26 requires numpy>=2 at import time but does not declare it, so pip does not catch it.
     "pyarrow>=14,<26",
-    "matplotlib>=3.8",
     "torch>=2.7",
 ]
 
