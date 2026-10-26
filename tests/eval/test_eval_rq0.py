@@ -40,3 +40,19 @@ def test_rq0_end_to_end_on_dummy(seg, objects, tmp_path):
     assert first.iou.max() > first.iou.iloc[0]
     assert first.boundary_iou.iloc[1:].isna().all() and pd.notna(first.boundary_iou.iloc[0])
     assert np.isclose(first.iou.iloc[0], b0.loc[("gt", person.obj_id), "iou"])
+
+
+def test_rq0_baselines_share_step0_and_budget(seg, objects, tmp_path):
+    annotations, dets, person = _setup(objects)
+    methods = ("oracle_clicks", "b1_random_k", "b2_multimask", "b3_box_refit", "b3_unc_click")
+    rows = run_rq0(seg, objects, annotations, dets, run_id="demo_b", sources=("gt",), methods=methods,
+                   max_clicks=2, use_prev_mask=False, log_every=0)
+    df = read_results(write_results(rows, tmp_path / "demo_b").parent)
+    assert set(df.method) == {"b0_none", *methods}
+    s0 = df[df.step == 0].groupby("obj_id").iou.nunique()
+    assert (s0 == 1).all()                                            # every method starts from the same mask
+    assert df.step.max() == 2 and df[df.method == "b2_multimask"].step.max() == 1
+    again = run_rq0(seg, objects, annotations, dets, run_id="demo_b", sources=("gt",), methods=("b1_random_k",),
+                    max_clicks=2, log_every=0)
+    r1 = [(r.obj_id, r.step, r.iou) for r in rows if r.method == "b1_random_k"]
+    assert r1 == [(r.obj_id, r.step, r.iou) for r in again if r.method == "b1_random_k"]  # seeded per object

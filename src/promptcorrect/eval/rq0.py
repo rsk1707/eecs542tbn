@@ -8,28 +8,35 @@ Every GT object gets rows for each requested prompt source (`prompt_origin`), SA
   sam3_text_mask  SAM 3's text-detection masks as they are (no decoder call).
 
 Detections are assigned to GT objects with `match` per (image, phrase). A GT object no detection
-matched gets one `b0_none` step-0 row with iou 0 and `detected=False`. Box sources also get an
-`oracle_clicks` trace: step 0 = the box alone, step k = k ideal clicks on top of it.
-Boundary IoU is computed at step 0 only (NaN at click steps).
+matched gets one `b0_none` step-0 row with iou 0 and `detected=False`. Box sources also get one trace
+per correction method in `methods`: step 0 = the box alone, step k = k corrections. `oracle_clicks` is
+the ideal-click upper bound; the others are P4's rule baselines (`baselines.rollout`), which see no GT.
+Every method gets the same step budget. Boundary IoU is computed at step 0 only (NaN at later steps).
+P4's baselines never feed the previous logits back, so compare them with an oracle run that uses
+`use_prev_mask=False`.
 """
 
 from __future__ import annotations
 
 import json
 import time
+import zlib
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
 
+from promptcorrect.baselines.rules import Step, rollout
 from promptcorrect.data.records import annotation_mask, decode_rle
 from promptcorrect.eval.matching import match
+from promptcorrect.eval.methods import check_method
 from promptcorrect.eval.metrics import boundary_iou, iou
 from promptcorrect.eval.oracle_clicks import run_oracle
 from promptcorrect.types import ObjectRecord, Prompt, ResultRow
 
 SOURCES = ("gt", "grounding_dino", "sam3_text", "sam3_text_mask")
 DETECTION_FILE = {"grounding_dino": "grounding_dino", "sam3_text": "sam3_text", "sam3_text_mask": "sam3_text"}
+BASELINES = ("b1_random_k", "b2_multimask", "b3_box_refit", "b3_unc_click")
 NAN = float("nan")
 
 
@@ -64,12 +71,19 @@ def _predict_boxes(segmenter, boxes, origin):
 
 
 def run_rq0(segmenter, records, annotations: dict, detections: dict[str, dict], *, run_id: str,
-            sources=SOURCES, max_clicks: int = 5, use_prev_mask: bool = True, max_images: int | None = None,
-            log_every: int = 25) -> list[ResultRow]:
-    """`detections` maps a DETECTION_FILE name to a `load_detections` dict (only the ones `sources` need)."""
+            sources=SOURCES, methods=("oracle_clicks",), max_clicks: int = 5, use_prev_mask: bool = True,
+            max_images: int | None = None, seed: int = 0, log_every: int = 25) -> list[ResultRow]:
+    """`detections` maps a DETECTION_FILE name to a `load_detections` dict (only the ones `sources` need).
+    `max_clicks` is the step budget of every method. Random baselines get a per-object seed (from `seed`
+    and the obj_id), so results do not depend on image order."""
     unknown = set(sources) - set(SOURCES)
     if unknown:
         raise ValueError(f"unknown sources {sorted(unknown)}; choose from {SOURCES}")
+    bad = [m for m in methods if m != "oracle_clicks" and m not in BASELINES]
+    if bad:
+        raise ValueError(f"unknown methods {bad}; choose from {('oracle_clicks',) + BASELINES}")
+    for m in methods:
+        check_method(m)
     by_image: dict[int, list[ObjectRecord]] = defaultdict(list)
     for r in records:
         by_image[r.image_id].append(r)
@@ -90,14 +104,27 @@ def run_rq0(segmenter, records, annotations: dict, detections: dict[str, dict], 
         if box is None:  # mask used as it is
             add(rec, origin, "b0_none", 0, iou(mask, gt), boundary_iou(mask, gt), det_score=det_score)
             return
-        tr = run_oracle(segmenter, Prompt(box=list(box), origin=origin), gt, max_clicks,
-                        start=out, start_ms=ms, use_prev_mask=use_prev_mask, keep_masks=True)
-        b0 = boundary_iou(tr.masks[0], gt)
-        add(rec, origin, "b0_none", 0, tr.ious[0], b0, n_decoder_calls=1, latency_ms=ms,
-            det_score=det_score, pred_iou=tr.pred_ious[0])
-        for k, (i, pi, t) in enumerate(zip(tr.ious, tr.pred_ious, tr.latency_ms)):
-            add(rec, origin, "oracle_clicks", k, i, b0 if k == 0 else NAN, n_points=k, n_decoder_calls=1 + k,
-                latency_ms=t, det_score=det_score, pred_iou=pi)
+        prompt = Prompt(box=list(box), origin=origin)
+        logits0 = segmenter.to_full_res(out.mask_logits).float().cpu().numpy()
+        mask0 = logits0 > 0
+        i0, b0 = iou(mask0, gt), boundary_iou(mask0, gt)
+        common = dict(det_score=det_score)
+        add(rec, origin, "b0_none", 0, i0, b0, n_decoder_calls=1, latency_ms=ms, pred_iou=out.iou_score, **common)
+        for method in methods:
+            if method == "oracle_clicks":
+                tr = run_oracle(segmenter, prompt, gt, max_clicks, start=out, start_ms=ms,
+                                use_prev_mask=use_prev_mask)
+                for k, (i, pi, t) in enumerate(zip(tr.ious, tr.pred_ious, tr.latency_ms)):
+                    add(rec, origin, method, k, i, b0 if k == 0 else NAN, n_points=k, n_decoder_calls=1 + k,
+                        latency_ms=t, pred_iou=pi, **common)
+                continue
+            rng = np.random.default_rng([seed, zlib.crc32(rec.obj_id.encode())])
+            steps = rollout(segmenter, method, prompt, max_clicks, rng,
+                            first=(Step(0, prompt, out, mask0, ms, 1), logits0))
+            for s in steps:
+                add(rec, origin, method, s.step, i0 if s.step == 0 else iou(s.mask, gt), b0 if s.step == 0 else NAN,
+                    n_points=len(s.prompt.points), n_decoder_calls=s.n_decoder_calls, latency_ms=s.latency_ms,
+                    pred_iou=s.output.iou_score, **common)
 
     image_ids = sorted(by_image)[:max_images]
     t0 = time.time()

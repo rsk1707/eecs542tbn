@@ -10,11 +10,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from promptcorrect.eval.aggregate import click_curve, initial, traces  # noqa: E402
+from promptcorrect.eval.aggregate import click_curve, initial, step_curve, traces  # noqa: E402
 from promptcorrect.eval.oracle_clicks import noc  # noqa: E402
 
 # One fixed colour per prompt source in every figure (Okabe-Ito, colour-blind safe).
 COLOR = {"gt": "#000000", "grounding_dino": "#E69F00", "sam3_text": "#0072B2", "sam3_text_mask": "#56B4E9"}
+METHOD_STYLE = {"oracle_clicks": ("#000000", "ideal clicks (upper bound)"), "b1_random_k": ("#999999", "random click"),
+                "b2_multimask": ("#CC79A7", "multimask"), "b3_box_refit": ("#009E73", "box refit"),
+                "b3_unc_click": ("#D55E00", "uncertainty click")}
 LABEL = {"gt": "GT box", "grounding_dino": "Grounding DINO box", "sam3_text": "SAM 3 text box",
          "sam3_text_mask": "SAM 3 text mask"}
 
@@ -100,7 +103,28 @@ def overconfidence(df: pd.DataFrame, source: str = "gt", ax=None):
 
 
 NEEDS_CLICKS = {"click_curves", "noc85"}
-FIGURES = {"failure_bars": failure_bars, "click_curves": click_curves, "noc85": noc_hist, "overconfidence": overconfidence}
+def method_curves(df: pd.DataFrame, only_below: float | None = 0.75):
+    """Mean IoU (raw, not best so far) after k steps of each correction method, one panel per box source."""
+    c = step_curve(df, only_below=only_below)
+    if c.empty:  # no failures at all: show every object
+        c, only_below = step_curve(df), None
+    src = _order(c.index.get_level_values("prompt_origin").unique())
+    fig, axes = plt.subplots(1, len(src), figsize=(3.6 * len(src), 3.4), sharey=True, squeeze=False)
+    for ax, s in zip(axes[0], src):
+        for m, (color, label) in METHOD_STYLE.items():
+            if (s, m) in c.index:
+                row = c.loc[(s, m)].drop("n").dropna()
+                ax.plot(row.index, row.values, marker="o", ms=3, color=color, label=label)
+        ax.set_title(f"{LABEL[s]} (n = {int(c.loc[s].n.iloc[0])})", fontsize=10)
+        ax.set_xlabel("correction steps")
+        ax.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
+    axes[0][0].set_ylabel("mean IoU" + (f" (initial IoU < {only_below})" if only_below else ""))
+    axes[0][-1].legend(frameon=False, fontsize=7)
+    return fig
+
+
+FIGURES = {"failure_bars": failure_bars, "click_curves": click_curves, "noc85": noc_hist, "overconfidence": overconfidence,
+           "method_curves": method_curves}
 
 
 def save_all(df: pd.DataFrame, out_dir: str | Path) -> list[Path]:
@@ -109,6 +133,8 @@ def save_all(df: pd.DataFrame, out_dir: str | Path) -> list[Path]:
     paths = []
     for name, fn in FIGURES.items():
         if name in NEEDS_CLICKS and not (df.method == "oracle_clicks").any():
+            continue
+        if name == "method_curves" and df.method[df.method != "b0_none"].nunique() < 2:
             continue
         fig = fn(df)
         fig.tight_layout()
