@@ -5,7 +5,7 @@
 > Five people are working in parallel with five separate agents; this file is how we avoid drift.
 > If something here is wrong or outdated, fix it via a small PR (see "Keeping this file current").
 
-Last updated: 2026-10-25 (P2 data pipeline and P3 eval contracts merged into main)
+Last updated: 2026-11-16 (P2 status audit and COCO/LVIS preparation)
 
 ---
 
@@ -227,7 +227,7 @@ Local dev: `pip install torch --index-url https://download.pytorch.org/whl/cpu &
 
 ## 12. Status & open questions (update continuously)
 
-**Status (2026-10-23):** repo scaffold written (types, config, data helpers, `Segmenter` interface + `DummySegmenter`, stubs for other roles; 22 CPU tests pass). Environment: `slurm/setup_env.sbatch` (shared venv) written but built on GreatLakes (Python 3.12, torch 2.10.0+cu126, check_env all OK, CUDA available on an A40); SAM 3 smoke test passed 23/23; the container recipe is unusable there (no fakeroot). SAM 3 HF access granted. Data not yet downloaded (`slurm/download_data.sbatch` ready, not yet run). SAM 3 / SAM 2.1 wrappers, detectors, perturbations, metrics and corrector are TODO stubs.
+**Status (2026-11-16, repository audit):** P2 week 1 (PR #1), P4 baselines/sweeps (PR #4), P5 corrector v0 (PR #5), and P3 RQ0/results (PR #7) are merged. The shared GreatLakes venv and SAM 3 wrapper were used for the recorded demo runs; data preparation and both detector streams have run (see `demo_rq0_1` below), superseding the old scaffold-only status. P2's next data handoff is leakage-safe COCO train/full val and LVIS-val preparation (`docs/p2_rq3.md`); production preparation awaits reviewed category decisions and a CPU batch run. Current scratch access/artifacts have not been rechecked by this local audit.
 
 **Known assumptions to verify:**
 - ~~SAM 3 interactive point/box API works on A40.~~ **Verified 2026-10-25** (smoke test, 23/23 checks): see `docs/interfaces.md` section 3 for the measured facts (288x288 low-res logits, presence only on the text path, ~0.1 s encode, 5.8 ms per single-box decoder call and 1.9 ms per box when batched, 5 GB GPU memory; whole demo experiments take minutes of GPU time).
@@ -237,6 +237,7 @@ Local dev: `pip install torch --index-url https://download.pytorch.org/whl/cpu &
 - SAM 3 text-path Hungarian matching design (secondary setting). Note: at the default confidence 0.5 a class with 3 GT instances produced 5 detections, and the threshold changes RQ0 failure rates: decide and record the threshold used.
 
 **Decisions log**
+- 2026-11-16: P2 added CPU-only COCO/LVIS preparation (`data/lvis.py`, `data/prepare_rq3.py`, `scripts/prepare_p2_rq3.py`), preserving shared ObjectRecord/split formats. Excludes all LVIS-val images before optional COCO train subsampling, reuses COCO filtering/geometry for LVIS, and requires explicit reviewed novelty decisions. No final category map or production artifacts are claimed. Local metadata sanity check: 79 exact synset candidates among 1,203 LVIS categories; unmatched subclasses need semantic review with P3/P5. Real training-failure mining still needs matched-prompt provenance from P3; validation failures must not become training data. Commands and handoffs: `docs/p2_rq3.md`.
 - 2026-10-25: P2 week 1 implementation prepared on `p2/week1-data-detectors`: COCO records, fixed demo split, leakage-safe split helper, Grounding DINO adapter and detection export. Official val annotations locally produced 500 images / 2,937 retained objects; CPU checks pass. GPU inference, LLMDet compatibility and full LVIS mapping remain unverified. O10 implementation proposals and reproducible commands: `docs/p2_week1.md`. Merged with the P1 scaffold on main (2026-10-25); `ObjectRecord` now has a single definition in `types.py`.
 - 2026-10-25: P5 corrector v0 on `p5/corrector-skeleton` (`corrector/`, `scripts/p5_*.py`, `docs/p5_corrector_v0.md`): error-map U-Net trained on SAM 3's own errors from clean GT boxes (3,000 leakage-safe COCO train images), evaluated as corrector vs no correction on the demo val objects. **Uses no stand-ins** for other roles' code. Perturbed prompts, baselines (P4) and ideal clicks (P3) get added by importing the owners' code once it exists. **Full run done** (job 64771883, commit 0105625, 25 min on an A40, runs `demo_p5_{samples,train,eval}_0`): error-map AUROC 0.99 (FP and FN), click hit rate 0.49. On the 2,937 demo val objects, one click at threshold 0.5: mean IoU 0.817 -> 0.820; on the 614 objects starting below 0.75, 0.606 -> 0.627 and 18.2% cross 0.75; but it clicks on 100% of objects and harms 16.1% of the 2,323 objects starting at or above 0.75 (mean -0.002 there). Raising the click threshold does not create abstention (`demo_p5_eval_0_t07`/`_t08`: still 99.9% clicked; at 0.7 all +0.0045, failures +0.024, harm on good masks 14.9%), so v1 needs a learned click/abstain decision (e.g. predicted IoU gain). Then P4 baselines in the same eval.
 - 2026-10-23: Timeline cut from 10 to 6 weeks, ~2 coding days/week; scope reduced to RQ0–RQ4 (stretch list in section 3).
