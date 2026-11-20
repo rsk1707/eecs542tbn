@@ -1,0 +1,71 @@
+== failure ==
+                   n  detected  mean_iou  mean_iou_detected  mean_boundary_iou  fail@0.5  fail@0.75  fail@0.9  pred_iou  overconfidence
+prompt_origin                                                                                                                          
+grounding_dino  2937    0.6544    0.5294             0.8090             0.4714    0.3830     0.4913    0.7943    0.9230          0.1139
+gt              2937    1.0000    0.8173             0.8173             0.7488    0.0371     0.2091    0.7014    0.9044          0.0872
+sam3_text       2937    0.8873    0.7107             0.8009             0.6467    0.1675     0.3354    0.7484    0.9200          0.1191
+sam3_text_mask  2937    0.8883    0.7143             0.8041             0.6524    0.1641     0.3286    0.7440       NaN             NaN
+
+== failure_by_size ==
+                            n  detected  mean_iou  mean_iou_detected  mean_boundary_iou  fail@0.5  fail@0.75  fail@0.9  pred_iou  overconfidence
+prompt_origin  size_bin                                                                                                                         
+grounding_dino large      825    0.8667    0.7223             0.8334             0.5530    0.1879     0.2848    0.5939    0.9506          0.1172
+               medium    1429    0.6396    0.5171             0.8084             0.4955    0.3898     0.4976    0.8300    0.9193          0.1109
+               small      683    0.4290    0.3224             0.7514             0.3222    0.6047     0.7277    0.9619    0.8670          0.1156
+gt             large      825    1.0000    0.8484             0.8484             0.6584    0.0461     0.1333    0.5127    0.9453          0.0970
+               medium    1429    1.0000    0.8275             0.8275             0.7965    0.0196     0.1763    0.7180    0.9124          0.0849
+               small      683    1.0000    0.7582             0.7582             0.7582    0.0630     0.3690    0.8946    0.8383          0.0801
+sam3_text      large      825    0.9382    0.7866             0.8385             0.6089    0.1139     0.2158    0.5709    0.9540          0.1155
+               medium    1429    0.9181    0.7383             0.8041             0.7095    0.1295     0.3023    0.7656    0.9214          0.1172
+               small      683    0.7613    0.5611             0.7370             0.5611    0.3119     0.5490    0.9268    0.8661          0.1291
+sam3_text_mask large      825    0.9418    0.7884             0.8371             0.6160    0.1091     0.2145    0.5733       NaN             NaN
+               medium    1429    0.9167    0.7429             0.8104             0.7151    0.1260     0.2939    0.7579       NaN             NaN
+               small      683    0.7643    0.5651             0.7394             0.5650    0.3104     0.5388    0.9209       NaN             NaN
+
+== click_curve ==
+step                 0       1       2       3       4       5     n
+prompt_origin                                                       
+grounding_dino  0.8090  0.8433  0.8610  0.8714  0.8791  0.8854  1922
+gt              0.8173  0.8504  0.8643  0.8732  0.8791  0.8839  2937
+sam3_text       0.8009  0.8343  0.8511  0.8613  0.8693  0.8758  2606
+
+== click_curve_failures ==
+step                 0       1       2       3       4       5    n
+prompt_origin                                                      
+grounding_dino  0.5730  0.6667  0.7175  0.7477  0.7705  0.7895  428
+gt              0.6056  0.6967  0.7338  0.7584  0.7736  0.7853  614
+sam3_text       0.5824  0.6631  0.7073  0.7327  0.7543  0.7716  654
+
+== noc ==
+                noc@85  not_reached@85  noc@90  not_reached@90     n
+prompt_origin                                                       
+grounding_dino  1.8710          0.2196  3.2326          0.4422  1922
+gt              1.9033          0.2288  3.3619          0.4726  2937
+sam3_text       2.0806          0.2583  3.4689          0.4904  2606
+
+== noc_failures ==
+                noc@85  not_reached@85  noc@90  not_reached@90    n
+prompt_origin                                                      
+grounding_dino  4.9182          0.6565  5.4393          0.8201  428
+gt              5.0277          0.7052  5.6238          0.8811  614
+sam3_text       5.1300          0.7248  5.6407          0.8853  654
+
+== noc_by_size ==
+                         noc@85  not_reached@85  noc@90  not_reached@90     n
+prompt_origin  size_bin                                                      
+grounding_dino large     1.0895          0.1035  2.1594          0.2462   715
+               medium    1.9628          0.2155  3.5011          0.4792   914
+               small     3.4915          0.5154  5.0137          0.8055   293
+gt             large     0.9212          0.0776  2.0170          0.2315   825
+               medium    1.7516          0.1938  3.3842          0.4619  1429
+               small     3.4070          0.4846  4.9400          0.7862   683
+sam3_text      large     1.0891          0.1085  2.1860          0.2597   774
+               medium    2.0526          0.2431  3.5960          0.5000  1312
+               small     3.6269          0.5192  5.0577          0.8096   520
+
+== harm ==
+                                 n  mean_gain  harm_rate
+prompt_origin  method                                   
+grounding_dino oracle_clicks  1922     0.0723     0.0208
+gt             oracle_clicks  2937     0.0624     0.0255
+sam3_text      oracle_clicks  2606     0.0718     0.0169

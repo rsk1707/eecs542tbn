@@ -1,0 +1,10 @@
+prompt_origin,size_bin,noc@85,not_reached@85,noc@90,not_reached@90,n
+grounding_dino,large,1.4084,0.172,2.6028,0.3804,715
+grounding_dino,medium,2.372,0.326,3.8665,0.5853,914
+grounding_dino,small,3.587,0.5392,5.1638,0.8396,293
+gt,large,1.2024,0.1467,2.4267,0.3503,825
+gt,medium,2.0917,0.2764,3.6977,0.5514,1429
+gt,small,3.6413,0.5403,5.0483,0.8184,683
+sam3_text,large,1.407,0.1757,2.615,0.3824,774
+sam3_text,medium,2.4451,0.3422,3.9162,0.5892,1312
+sam3_text,small,3.7788,0.5673,5.1269,0.8327,520

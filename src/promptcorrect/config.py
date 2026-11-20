@@ -29,7 +29,8 @@ class Paths:
 def load_paths(name: str | None = None) -> Paths:
     """Load configs/paths/<name>.yaml. `name` defaults to $PC_PATHS, then "local".
 
-    Relative entries resolve against the repo root. Directories are not created here.
+    Relative entries resolve against the YAML file's folder (same rule as data.prepare.rooted_path, which
+    the scripts use). Directories are not created here.
     """
     name = name or os.environ.get("PC_PATHS", "local")
     cfg_file = CONFIG_DIR / "paths" / f"{name}.yaml"
@@ -41,7 +42,7 @@ def load_paths(name: str | None = None) -> Paths:
         if key not in raw:
             raise KeyError(f"{cfg_file} is missing '{key}'")
         p = Path(raw[key])
-        resolved[key] = p if p.is_absolute() else REPO_ROOT / p
+        resolved[key] = p if p.is_absolute() else (cfg_file.parent / p).resolve()
     return Paths(**resolved)
 
 

@@ -34,9 +34,10 @@ on SAM 3 yet**; the commands below are ready for GreatLakes.
 export PC_ROOT=/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn
 A=--account=eecs542f26s001_class; P=configs/paths/greatlakes.yaml
 
-# 1. Quick check (5 images), then the full sensitivity sweep (no correction, ~53k boxes, batched per image)
-sbatch $A --time=00:20:00 slurm/run_gpu.sbatch scripts/run_sensitivity.py --paths $P --run-id demo_sens_test --max-images 5
-sbatch $A --time=01:00:00 slurm/run_gpu.sbatch scripts/run_sensitivity.py --paths $P --run-id demo_sens_1
+# 1. Sensitivity sweep, no correction: the whole set takes about 10 minutes (+ 5-10 min cold start).
+#    --time-budget-min stops cleanly and SAVES what is done if the node is slow (keep it below --time).
+sbatch $A --time=00:45:00 slurm/run_gpu.sbatch scripts/run_sensitivity.py --paths $P --run-id demo_sens_full \
+    --no-boundary --time-budget-min 35
 
 # 2. Baselines vs ideal clicks on a coarser grid (one decoder call per step, so fewer prompts)
 sbatch $A --time=02:00:00 slurm/run_gpu.sbatch scripts/run_sensitivity.py --paths $P --run-id demo_baselines_1 \
@@ -47,12 +48,27 @@ python scripts/make_sensitivity_figures.py --paths $P --run-id demo_sens_1
 python scripts/make_sensitivity_figures.py --paths $P --run-id demo_baselines_1
 ```
 
-Rough cost estimate (from P1's measured 1.9 ms per batched box, 5.8 ms per point call, ~0.1 s encode; unmeasured
-here): job 1 is dominated by CPU IoU/Boundary IoU work, not the GPU. Job 2 has ~2.9k objects x 6 prompts x
-5 methods x 3 steps ≈ 260k decoder calls ≈ 25 min of decoder time plus CPU metrics. Use `--max-images` first.
+Measured on an A40 node. Job 64785358 (5 images, 720 prompts) took 68.7 s; job 64788454 (200 images, 1,390 objects,
+25,020 prompts, `--no-boundary`) took 299 s, of which about 110 s is a one-time warm-up in the first images
+(image load and encode, first SAM calls), then about 0.9 s per image (about 12 ms per prompt). The full 487 images
+therefore take about 10 minutes, plus a 5-10 minute cold start the script's own timer does not count. (P1's first
+estimate of 85 minutes extrapolated from the 5-image run, which was mostly warm-up, and was wrong; the earlier
+`--time=01:00:00` would have been enough after all.) `--time-budget-min` stays as a safeguard. The progress line
+printed every `--log-every` images shows an ETA and the seconds spent in encode, prediction, upsampling, metrics and
+rollouts, and `sweep_manifest.json` records the same split (`seconds_by_phase`), `images_done` and `stopped_early`.
+Job 2 (baselines) has ~2.9k
+objects x 6 prompts x 5 methods x 3 steps = ~260k decoder calls, about 25 min of decoder time plus CPU metrics;
+use `--max-images` first, and `--time-budget-min` here too.
 
 Local check without a GPU (needs an `objects_val.jsonl`; dummy IoUs are meaningless):
 `python scripts/run_sensitivity.py --paths configs/paths/local.yaml --run-id local_test --backend dummy --max-images 5`.
+
+## Changes made by P1 on 2026-10-25 (timing)
+
+- `run_sweep` / `run_sensitivity.py`: `--time-budget-min`, `--no-boundary`, `--log-every`, progress with ETA, a
+  per-phase time split, and the early-stop flags above.
+- `by_box_iou` blanks cells with fewer than `MIN_BIN_N` (5) prompts, in the summary table and the figure
+  (the 5-image check had a bin whose mean IoU of 0.011 came from one prompt).
 
 ## Not done yet (later weeks)
 

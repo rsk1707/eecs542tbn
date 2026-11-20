@@ -39,3 +39,19 @@ def test_save_run_config(tmp_path):
 
 def test_set_seed_runs():
     set_seed(0)
+
+
+def test_relative_paths_resolve_against_the_yaml_folder(tmp_path, monkeypatch):
+    """Same rule as data.prepare.rooted_path, so scripts and load_paths() agree."""
+    from promptcorrect import config
+    from promptcorrect.data.prepare import rooted_path
+
+    (tmp_path / "paths").mkdir()
+    yml = tmp_path / "paths" / "x.yaml"
+    yml.write_text("\n".join(["data_root: ../d", "cache_root: ../c", "ckpt_root: /abs/k", "runs_root: r", ""]))
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
+    p = config.load_paths("x")
+    assert p.data_root == (tmp_path / "d").resolve() and p.runs_root == (tmp_path / "paths" / "r").resolve()
+    assert p.ckpt_root.as_posix().endswith("/abs/k")
+    for key in ("data_root", "cache_root", "runs_root"):                  # identical to the scripts' resolver
+        assert rooted_path(yml, key, "x").resolve() == getattr(p, key) / "x"   # same place, maybe spelled with ".."
