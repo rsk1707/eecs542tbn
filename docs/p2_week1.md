@@ -1,5 +1,10 @@
 # P2 week 1: data and detector handoff
 
+**Status update (2026-11-16):** this handoff is merged (PR #1). The demo detector
+streams were subsequently run and evaluated in P3's `demo_rq0_1` results.
+Statements below about pending inference describe the original week 1 handoff.
+Current P2 work and production requirements: [`p2_rq3.md`](p2_rq3.md).
+
 This PR supplies the COCO demo data pipeline and the Grounding DINO demo fallback.
 SAM 3 inference stays behind P1's `Segmenter`; matching, metrics and failure mining
 use P3's evaluation code when available. No segmentation results are claimed here.
