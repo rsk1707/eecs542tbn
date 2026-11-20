@@ -41,12 +41,20 @@ def failure_table(df: pd.DataFrame, by=("prompt_origin",)) -> pd.DataFrame:
     return t
 
 
-def traces(df: pd.DataFrame, method: str = "oracle_clicks", only_below: float | None = None) -> pd.DataFrame:
-    """[trace, step] IoU for one method. Traces that stopped early (mask exact) are forward-filled.
-    `only_below`: keep traces whose step-0 IoU is below this (e.g. 0.75 = the failures)."""
-    d = _keyed(df[df.method == method])
+def traces(df: pd.DataFrame, method: str | None = "oracle_clicks", only_below: float | None = None) -> pd.DataFrame:
+    """[trace, step] IoU for one method (None: every correction method). Traces that stopped early keep
+    their last mask (forward-filled). `only_below`: keep traces whose step-0 IoU is below this."""
+    d = _keyed(df[df.method == method] if method else df[df.method != "b0_none"])
     w = d.set_index(TRACE + ATTRS + ["step"]).iou.unstack("step").ffill(axis=1)
     return w if only_below is None else w[w[0] < only_below]
+
+
+def step_curve(df: pd.DataFrame, by=("prompt_origin", "method"), **kw) -> pd.DataFrame:
+    """Mean IoU after k steps of each correction method. Raw, not best-so-far: a deployed method cannot
+    use the GT to go back to its best step, so this is the fair comparison across methods."""
+    w = traces(df, method=None, **kw)
+    g = w.groupby(level=list(by))
+    return g.mean().assign(n=g.size())
 
 
 def click_curve(df: pd.DataFrame, by=("prompt_origin",), **kw) -> pd.DataFrame:
@@ -92,6 +100,12 @@ def all_tables(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
         "failure": failure_table(df),
         "failure_by_size": failure_table(df, by=("prompt_origin", "size_bin")),
     }
+    if (df.method != "b0_none").any():
+        tables |= {
+            "methods": step_curve(df),
+            "methods_failures": step_curve(df, only_below=0.75),
+            "harm": harm_table(df),
+        }
     if (df.method == "oracle_clicks").any():
         tables |= {
             "click_curve": click_curve(df),
@@ -99,7 +113,6 @@ def all_tables(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
             "noc": noc_table(df),
             "noc_failures": noc_table(df, only_below=0.75),
             "noc_by_size": noc_table(df, by=("prompt_origin", "size_bin")),
-            "harm": harm_table(df),
         }
     return {k: v.round(4) for k, v in tables.items()}
 

@@ -4,6 +4,9 @@
         scripts/run_rq0.py --paths configs/paths/greatlakes.yaml --run-id demo_rq0_1
 
 Quick check first: add `--max-images 20` and a different run id. `--sources gt` needs no detection files.
+Baselines vs ideal clicks (P4's rules never feed the previous logits back, so neither does the oracle here):
+    ... --run-id demo_rq0_baselines_1 --no-prev-mask \
+        --methods oracle_clicks b1_random_k b2_multimask b3_box_refit b3_unc_click
 Writes $RUNS_ROOT/<run-id>/{results.parquet, config.yaml, manifest.json} and prints a short summary.
 """
 
@@ -14,21 +17,14 @@ import time
 from promptcorrect.config import RunConfig, resolve_git_commit, save_run_config, set_seed
 from promptcorrect.data.prepare import file_sha256, rooted_path
 from promptcorrect.data.records import read_records
+from promptcorrect.eval.aggregate import all_tables, as_text
 from promptcorrect.eval.results import RESULTS_FILE, to_frame, write_results
-from promptcorrect.eval.rq0 import DETECTION_FILE, SOURCES, load_detections, run_rq0
+from promptcorrect.eval.rq0 import BASELINES, DETECTION_FILE, SOURCES, load_detections, run_rq0
 
 
 def summary(df) -> str:
-    s0 = df[(df.method == "b0_none") & (df.step == 0)]
-    t = s0.groupby("prompt_origin").agg(
-        n=("iou", "size"), detected=("detected", "mean"), mean_iou=("iou", "mean"),
-        below_050=("iou", lambda x: (x < 0.5).mean()), below_075=("iou", lambda x: (x < 0.75).mean()),
-        pred_iou=("pred_iou", "mean"))
-    oc = df[df.method == "oracle_clicks"]
-    if not oc.empty:
-        last = oc.groupby(["prompt_origin", "obj_id"])["iou"].max().groupby("prompt_origin").mean()
-        t["best_iou_after_clicks"] = last
-    return t.round(3).to_string()
+    t = all_tables(df)
+    return as_text({k: t[k] for k in ("failure", "methods_failures") if k in t})
 
 
 def main() -> None:
@@ -40,7 +36,9 @@ def main() -> None:
     ap.add_argument("--images", default="coco/val2017", help="relative to data_root")
     ap.add_argument("--detections", default="detections/{}/val.jsonl", help="relative to cache_root; {} = detector")
     ap.add_argument("--sources", nargs="+", default=list(SOURCES), choices=SOURCES)
-    ap.add_argument("--max-clicks", type=int, default=5, help="ideal clicks per object (0 = none)")
+    ap.add_argument("--methods", nargs="+", default=["oracle_clicks"], choices=("oracle_clicks",) + BASELINES,
+                    help="correction methods run from every box prompt")
+    ap.add_argument("--max-clicks", type=int, default=5, help="step budget per method (0 = none)")
     ap.add_argument("--no-prev-mask", action="store_true", help="do not feed the previous logits back with each click")
     ap.add_argument("--max-images", type=int, help="first N images only (quick check)")
     ap.add_argument("--seed", type=int, default=0)
@@ -64,7 +62,8 @@ def main() -> None:
     segmenter = Sam3Segmenter(image_dirs=[rooted_path(args.paths, "data_root", args.images)], track_presence=False)
     t0 = time.time()
     rows = run_rq0(segmenter, records, annotations, detections, run_id=args.run_id, sources=tuple(args.sources),
-                   max_clicks=args.max_clicks, use_prev_mask=not args.no_prev_mask, max_images=args.max_images)
+                   methods=tuple(args.methods), max_clicks=args.max_clicks, use_prev_mask=not args.no_prev_mask,
+                   max_images=args.max_images, seed=args.seed)
     seconds = time.time() - t0
 
     write_results(rows, out_dir)
@@ -72,7 +71,7 @@ def main() -> None:
                               max_steps=args.max_clicks), out_dir)
     df = to_frame(rows)
     manifest = {
-        "sources": args.sources, "max_clicks": args.max_clicks, "use_prev_mask": not args.no_prev_mask,
+        "sources": args.sources, "methods": args.methods, "max_clicks": args.max_clicks, "use_prev_mask": not args.no_prev_mask,
         "max_images": args.max_images, "seconds": round(seconds, 1), "n_rows": len(df),
         "n_objects": int(df.obj_id.nunique()), "n_images": int(df.image_id.nunique()),
         "inputs": {"records_sha256": file_sha256(records_file), "annotations_sha256": file_sha256(ann_file),

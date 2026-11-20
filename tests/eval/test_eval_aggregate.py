@@ -1,6 +1,6 @@
 import pytest
 
-from promptcorrect.eval.aggregate import all_tables, click_curve, failure_table, harm_table, noc_table
+from promptcorrect.eval.aggregate import all_tables, click_curve, failure_table, harm_table, noc_table, step_curve
 from promptcorrect.eval.results import to_frame
 from promptcorrect.types import ResultRow
 
@@ -49,5 +49,11 @@ def test_noc_and_harm():
     assert h.loc["gt", "mean_gain"] == pytest.approx((0.2 + 0.05) / 2)
 
 
+def test_step_curve_is_raw_not_best_so_far():
+    c = step_curve(_df())
+    assert c.loc[("gt", "oracle_clicks"), 2] == pytest.approx((0.8 + 1.0) / 2)  # a drops back to 0.8
+    assert c.loc[("gd", "oracle_clicks"), 1] == pytest.approx(0.3)
+
+
 def test_all_tables_runs():
-    assert {"failure", "noc_failures", "harm", "click_curve_failures"} <= set(all_tables(_df()))
+    assert {"failure", "noc_failures", "harm", "click_curve_failures", "methods"} <= set(all_tables(_df()))
