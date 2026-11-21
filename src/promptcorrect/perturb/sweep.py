@@ -12,7 +12,6 @@ the object), `pert_dir` (shift angle in degrees / truncated side), `clipped`, `n
 
 from __future__ import annotations
 
-import math
 import time
 from collections import defaultdict
 
@@ -24,7 +23,7 @@ from promptcorrect.baselines.rules import Step, next_prompt, rollout
 from promptcorrect.eval.methods import check_method
 from promptcorrect.eval.metrics import boundary_iou, iou
 from promptcorrect.eval.oracle_clicks import ideal_click as oracle_click
-from promptcorrect.perturb.box import SWEEP_LEVELS, object_rng, sweep_prompts
+from promptcorrect.perturb.box import SWEEP_LEVELS, object_rng, perturbation_fields, sweep_prompts
 from promptcorrect.perturb.severity import describe, severity_columns
 from promptcorrect.types import ObjectRecord, Prompt
 
@@ -37,15 +36,6 @@ def _oracle_rule(gt: np.ndarray):
         click = oracle_click(mask, gt)
         return None if click is None else next_prompt(prompt, "oracle_clicks", point=click)
     return rule
-
-
-def _pert_fields(p: Prompt) -> dict:
-    if p.perturbation is None:
-        return dict(pert_type=None, pert_level=None, pert_dir=None, clipped=False)
-    params = p.perturbation["params"]
-    direction = (f"{math.degrees(params['angle']) % 360:.0f}" if "angle" in params else params.get("side"))
-    return dict(pert_type=p.perturbation["type"], pert_level=p.perturbation["level"], pert_dir=direction,
-                clipped=params["clipped"])
 
 
 def run_sweep(segmenter, records, *, run_id: str, levels: dict = SWEEP_LEVELS, methods=("b0_none",), steps: int = 3,
@@ -98,7 +88,7 @@ def run_sweep(segmenter, records, *, run_id: str, levels: dict = SWEEP_LEVELS, m
             sev = severity_columns(describe(prompt, rec, objs, mask_cache=cache))
             gt = cache[rec.obj_id]
             common = dict(run_id=run_id, obj_id=rec.obj_id, image_id=image_id, pert_id=pid,
-                          prompt_origin=prompt.origin, **_pert_fields(prompt), **sev, category=rec.category_name,
+                          prompt_origin=prompt.origin, **perturbation_fields(prompt), **sev, category=rec.category_name,
                           novelty=rec.novelty, size_bin=rec.size_bin, thinness=rec.thinness, area=rec.area)
             s0 = Step(0, prompt, out, full > 0, ms, 1)
             b0 = boundary_iou(s0.mask, gt) if boundary else NAN

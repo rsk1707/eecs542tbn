@@ -70,10 +70,34 @@ Local check without a GPU (needs an `objects_val.jsonl`; dummy IoUs are meaningl
 - `by_box_iou` blanks cells with fewer than `MIN_BIN_N` (5) prompts, in the summary table and the figure
   (the 5-image check had a bin whose mean IoU of 0.011 came from one prompt).
 
+## Training samples for corrector v1 (2026-11-20, `docs/next_steps.md` P4 task 1)
+
+`train_data: synthetic` is implemented; **not yet run on SAM 3**.
+
+- `perturb/training.py`: `synthetic_prompts(rec, seed, n_perturbed, include_clean, types)` gives each object its clean
+  GT box plus `n_perturbed` random shift / scale / truncate boxes (`sample_perturbation`, levels from `TRAIN_RANGES`),
+  drawn from `object_rng(seed, obj_id, "train")` so they do not depend on image order. `make_prompt_fn(train_data)`
+  selects the variant; `real` / `mixed` / `matched` raise until P2's mined failures exist. `SeverityMeta` adds
+  `pert_type, pert_level, pert_dir, clipped` and the `describe()` columns to every sample.
+- P5's `corrector/samples.py` gained two optional arguments, `prompt_fn` and `extra_meta`; the default is unchanged
+  (clean GT box, v0). For every prompt the **crop window and box channel are built from the prompt box**, never the
+  GT box: the deployed corrector only sees the prompt, and the window's context margin keeps GT that a bad box cut
+  off visible. `meta.jsonl` gains `prompt_id` (0 = first prompt of the object).
+- `scripts/p4_make_samples.py`: same images, leakage handling (LVIS-val removed before sampling) and format as
+  `scripts/p5_make_samples.py`. Default 1 clean + 2 perturbed samples per object, so about 3x the v0 sample count:
+  P5 should check that the in-memory `SampleSet` still fits (`--n-perturbed 1` halves the extra).
+
+```bash
+sbatch $A --time=00:30:00 --job-name=p4_samples slurm/run_gpu.sbatch scripts/p4_make_samples.py \
+    --paths $P --run-id p4_samples_synth_test --max-images 20
+sbatch $A --time=04:00:00 --mem=64G --job-name=p4_samples slurm/run_gpu.sbatch scripts/p4_make_samples.py \
+    --paths $P --run-id p4_samples_synth_0
+```
+
 ## Not done yet (later weeks)
 
-- Training-data variants (`train_data: synthetic | real | mixed | matched`): need P5's sample format and P2's mined
-  real failures. `sample_perturbation` is the synthetic generator they will use.
+- Training-data variants `real` / `mixed` / `matched`: need P2's mined real failures on COCO train (with the
+  matched prompt per object, from P3). `matched` = the same objects and count as `real`, with synthetic perturbations.
 - Distractor / wrong-instance / point perturbations (listed in `RunConfig.perturbations` examples): not implemented.
 - Running the baselines on *real* detector failures (needs the RQ0 detections and `match`): the rules take any
   starting prompt, so this is a small runner change once P3's RQ0 rows are final.
