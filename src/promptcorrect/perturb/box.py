@@ -116,6 +116,17 @@ def sample_perturbation(box: list[float], image_hw: tuple[int, int], rng: np.ran
     return perturb(box, ptype, level, image_hw, rng)
 
 
+def perturbation_fields(p: Prompt) -> dict:
+    """The prompt's perturbation as flat columns: pert_type, pert_level, pert_dir (shift angle in degrees or
+    truncated side), clipped. All None/False for an unperturbed prompt."""
+    if p.perturbation is None:
+        return dict(pert_type=None, pert_level=None, pert_dir=None, clipped=False)
+    params = p.perturbation["params"]
+    direction = (f"{math.degrees(params['angle']) % 360:.0f}" if "angle" in params else params.get("side"))
+    return dict(pert_type=p.perturbation["type"], pert_level=p.perturbation["level"], pert_dir=direction,
+                clipped=params["clipped"])
+
+
 def sweep_prompts(box: list[float], image_hw: tuple[int, int], rng: np.random.Generator,
                   levels: dict[str, tuple[float, ...]] = SWEEP_LEVELS) -> list[Prompt]:
     """The clean box (origin "gt", no perturbation) followed by one prompt per (type, level) in `levels`."""

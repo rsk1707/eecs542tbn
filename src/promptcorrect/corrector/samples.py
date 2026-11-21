@@ -1,10 +1,11 @@
 """Corrector v0 training samples: one frozen-segmenter state per sample, stored as object-centric crops.
 Owner: P5. Format: docs/p5_corrector_v0.md.
 
-v0 uses only code that exists in the repo: every object's clean GT box goes through the frozen segmenter
-and the result is one sample, so the errors the corrector learns are SAM 3's own. Perturbed boxes (P4's
-`perturb/`) and states after ideal clicks (P3's simulator) are added once those exist; the `clicks` array
-is already in the format and is empty (label -1) for now.
+By default every object's clean GT box goes through the frozen segmenter and the result is one sample, so
+the errors the corrector learns are SAM 3's own (v0). `prompt_fn` lets the caller give each object several
+prompts instead, e.g. P4's perturbed boxes (`perturb/training.py`); the crop window and box channel then
+follow the *prompt* box, which is all a deployed corrector sees. States after ideal clicks (P3's simulator)
+are not generated yet; the `clicks` array is in the format and empty (label -1).
 
 Layout under `out_dir`: shard_XXXX.npz (rgb, logits, gt, valid, box, clicks), meta.jsonl (one row per sample,
 `shard` / `row` point into the npz), manifest.json.
@@ -98,7 +99,11 @@ class _ShardWriter:
 def generate_samples(segmenter, records: list[ObjectRecord], load_image: Callable[[int], np.ndarray],
                      out_dir: str | Path, *, crop_size: int = 128, context: float = 0.5,
                      max_objects_per_image: int | None = 8, seed: int = 0, shard_size: int = 2000,
-                     max_images: int | None = None, log_every: int = 50) -> dict:
+                     max_images: int | None = None, log_every: int = 50,
+                     prompt_fn: Callable[[ObjectRecord, list[ObjectRecord]], list[Prompt]] | None = None,
+                     extra_meta: Callable[[Prompt, ObjectRecord, list[ObjectRecord]], dict] | None = None) -> dict:
+    """`prompt_fn(record, records of its image)` -> that object's prompts (each needs a box); default: its
+    clean GT box. `extra_meta(prompt, record, records of its image)` -> extra meta.jsonl fields per sample."""
     out_dir = Path(out_dir)
     rng = np.random.default_rng(seed)
     by_image = group_by_image(records)
@@ -112,24 +117,36 @@ def generate_samples(segmenter, records: list[ObjectRecord], load_image: Callabl
                 objs = [objs[i] for i in sorted(rng.choice(len(objs), max_objects_per_image, replace=False))]
             image_t = torch.from_numpy(np.array(load_image(image_id))).permute(2, 0, 1).contiguous()
             segmenter.set_image(image_id)
-            outs = segmenter.predict([Prompt(box=list(r.gt_box), origin="gt") for r in objs])
-            for rec, out in zip(objs, outs):
-                gt = rle_decode(rec.gt_mask)
+            image_objs = by_image[image_id]
+            jobs = []  # (record, index of the prompt within the object, prompt)
+            for rec in objs:
+                prompts = prompt_fn(rec, image_objs) if prompt_fn else [Prompt(box=list(rec.gt_box), origin="gt")]
+                jobs += [(rec, k, p) for k, p in enumerate(prompts)]
+            if any(p.box is None for _, _, p in jobs):
+                raise ValueError("every training prompt needs a box (the crop window is built around it)")
+            outs = segmenter.predict([p for _, _, p in jobs])
+            gts: dict[str, np.ndarray] = {}
+            for (rec, k, prompt), out in zip(jobs, outs):
+                if rec.obj_id not in gts:  # decode each object's GT once, however many prompts it has
+                    gts[rec.obj_id] = rle_decode(rec.gt_mask)
+                gt = gts[rec.obj_id]
                 logits = segmenter.to_full_res(out.mask_logits)
-                window = crop_window(rec.gt_box, context)
+                window = crop_window(prompt.box, context)
                 arrays = crop_object(image_t, logits, gt, window, crop_size)
-                arrays["box"] = box_mask(rec.gt_box, window, crop_size)
+                arrays["box"] = box_mask(prompt.box, window, crop_size)
                 arrays["clicks"] = clicks_to_crop([], window, crop_size, MAX_CLICKS)
                 writer.add(arrays, dict(
                     obj_id=rec.obj_id, image_id=rec.image_id, category=rec.category_name, size_bin=rec.size_bin,
-                    origin="gt", box=list(rec.gt_box), window=window, points=[], n_clicks=0,
-                    iou=iou((logits > 0).numpy(), gt), pred_iou=out.iou_score,
+                    origin=prompt.origin, prompt_id=k, box=[float(v) for v in prompt.box], window=window,
+                    points=[], n_clicks=0, iou=iou((logits > 0).numpy(), gt), pred_iou=out.iou_score,
                     crop_fp=float(((arrays["logits"] > 0) & ~arrays["gt"]).mean()),
-                    crop_fn=float((arrays["gt"] & ~(arrays["logits"] > 0)).mean())))
+                    crop_fn=float((arrays["gt"] & ~(arrays["logits"] > 0)).mean()),
+                    **(extra_meta(prompt, rec, image_objs) if extra_meta else {})))
             if log_every and n % log_every == 0:
                 print(f"[samples] {n}/{len(image_ids)} images, {writer.n} samples, {time.time() - t0:.0f}s", flush=True)
     finally:
         writer.close()
     return {"n_samples": writer.n, "n_shards": writer.shard, "n_images": len(image_ids),
             "seconds": round(time.time() - t0, 1), "crop_size": crop_size, "context": context,
-            "prompts": "clean GT box only", "max_objects_per_image": max_objects_per_image, "seed": seed}
+            "prompts": "clean GT box only" if prompt_fn is None else "prompt_fn (see manifest)",
+            "max_objects_per_image": max_objects_per_image, "seed": seed}
