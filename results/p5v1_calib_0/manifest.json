@@ -1,0 +1,18 @@
+{
+  "train_run": "p5v1_train_0",
+  "ckpt": "best.pt",
+  "ckpt_epoch": 25,
+  "samples_run": "p4_samples_synth_0",
+  "n_samples": 3885,
+  "n_images": 301,
+  "max_images": null,
+  "err_thresholds": [
+    0.3,
+    0.5,
+    0.7
+  ],
+  "max_harm": 0.05,
+  "good_iou": 0.75,
+  "git_commit": "7fbf4ae68108a28f7580ff6250a812cc58f09148",
+  "notes": "held-out = split_by_image(val_frac, salt p5v0) of the training samples; prompts = each sample's own box (clean or P4-perturbed); one corrector click per sample"
+}

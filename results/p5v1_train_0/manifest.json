@@ -1,0 +1,28 @@
+{
+  "samples": "p4_samples_synth_0",
+  "val_frac": 0.1,
+  "n_train": 35130,
+  "n_val": 3885,
+  "n_val_images": 301,
+  "train_config": {
+    "epochs": 25,
+    "batch_size": 64,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "base": 32,
+    "dice_weight": 1.0,
+    "flip": true,
+    "amp": true,
+    "threshold": 0.5,
+    "click_eval_samples": 2000,
+    "seed": 0,
+    "quality_head": true,
+    "quality_weight": 1.0,
+    "failure_iou": 0.75
+  },
+  "n_params": 1968739,
+  "seconds": 1465.7,
+  "best_val_loss": 1.1414005025740592,
+  "git_commit": "7fbf4ae68108a28f7580ff6250a812cc58f09148",
+  "dirty": false
+}

@@ -1,0 +1,32 @@
+{
+  "train_run": "p5v1_train_0",
+  "ckpt": "best.pt",
+  "ckpt_epoch": 25,
+  "samples_run": "p4_samples_synth_0",
+  "calib_run": "p5v1_calib_0",
+  "method": "corrector_v1",
+  "err_threshold": 0.7,
+  "quality_threshold": 0.67,
+  "thresholds_from": "calibration (held-out training images)",
+  "feedback": true,
+  "oracle_feedback": true,
+  "baselines_feedback": false,
+  "v0": {
+    "train_run": "demo_p5_train_0",
+    "epoch": 23
+  },
+  "steps": 1,
+  "n_perturbed": 2,
+  "include_clean": true,
+  "max_images": null,
+  "seconds": 1138.8,
+  "n_rows": 126931,
+  "n_objects": 2937,
+  "n_images": 487,
+  "git_commit": "7fbf4ae68108a28f7580ff6250a812cc58f09148",
+  "inputs": {
+    "records_sha256": "86f4cb3de2c32ff55427ac6297f211fd601a5e7b9b30f91f623cf8b3c64d6901",
+    "records_source": "/scratch/eecs542f26s001_class_root/eecs542f26s001_class/srikrish/eecs542tbn/data/objects_val.jsonl"
+  },
+  "notes": "step 0 shared by all methods; P4 baselines never feed logits back (their definition); boundary_iou only at step 0 unless --boundary-all; SAM 3 hole filling off"
+}

@@ -1,0 +1,17 @@
+prompt_origin,method,0,1
+gt,b0_none,0.8174,0.8174
+gt,b1_random_k,0.8174,0.7986
+gt,b2_multimask,0.8174,0.8139
+gt,b3_box_refit,0.8174,0.8108
+gt,b3_unc_click,0.8174,0.8191
+gt,corrector_v0,0.8174,0.8201
+gt,corrector_v1,0.8174,0.8173
+gt,oracle_clicks,0.8174,0.8476
+perturbed,b0_none,0.5617,0.5617
+perturbed,b1_random_k,0.5617,0.5412
+perturbed,b2_multimask,0.5617,0.5872
+perturbed,b3_box_refit,0.5617,0.5855
+perturbed,b3_unc_click,0.5617,0.5605
+perturbed,corrector_v0,0.5617,0.5481
+perturbed,corrector_v1,0.5617,0.6177
+perturbed,oracle_clicks,0.5617,0.6732

@@ -1,0 +1,4 @@
+source,method,delta_fail,best_rule,best_rule_delta,oracle_delta,harm_good_pct,beats_rules,harm_ok,go
+all,corrector_v1,0.0795,b2_multimask,0.034,0.1516,3.6318,True,True,True
+gt,corrector_v1,0.0169,b3_unc_click,0.0088,0.0863,2.8375,True,True,True
+perturbed,corrector_v1,0.0895,b2_multimask,0.0399,0.1621,4.5322,True,True,True

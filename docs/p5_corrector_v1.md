@@ -1,9 +1,33 @@
 # Corrector v1 (P5)
 
-**Status (2026-11-26):** code ready on `p5/corrector-v1`. CPU tests pass (`tests/p5/test_corrector_v1.py`, 7 tests;
-full suite green). All three scripts were smoke-tested locally end to end with `DummySegmenter` standing in for SAM 3.
-**Not yet run on GreatLakes / SAM 3: no v1 numbers exist yet.**
+**Status (2026-11-26):** run on GreatLakes: smoke job 66870792, full job 66870895 (52 min on an A40, commit 7fbf4ae).
+Results below; files in `results/p5v1_{train,calib,eval}_0/`, figures in `results/p5v1_eval_0/figures/`. CPU tests pass.
 **Owner:** Sharvani (P5). Builds on v0 (`docs/p5_corrector_v0.md`) and P4's samples `p4_samples_synth_0`.
+
+## Results (`p5v1_eval_0`, logit feedback on)
+
+2,937 demo val objects; one step for every method from the same step-0 mask; ideal clicks with feedback. Failing = start
+IoU < 0.75, good = start >= 0.75, harm = final < start - 0.01. All numbers from `results/p5v1_eval_0/summary_final.csv`.
+
+| | v1 | v0 | best rule | ideal click |
+|---|---|---|---|---|
+| Clean GT box, failing (611): mean ΔIoU | **+0.017** | +0.020 | +0.009 (`b3_unc_click`) | +0.086 |
+| Clean GT box, good (2,326): harm | **2.8%** | 16.2% | 12.6% (`b3_box_refit`) | 4.3% |
+| Clean GT box, all: mean ΔIoU / % clicked | -0.000 / 13% | +0.003 / 100% | +0.002 / 100% | +0.030 / 100% |
+| Perturbed box, failing (3,822): mean ΔIoU | **+0.090** | +0.009 | +0.040 (`b2_multimask`) | +0.162 |
+| Perturbed box, good (2,052): harm | **4.5%** | 48.6% | 14.6% (`b3_box_refit`) | 7.7% |
+| Perturbed box, all: mean ΔIoU / % clicked | +0.056 / 55% | -0.014 / 100% | +0.026 / 100% | +0.111 / 100% |
+
+- The quality gate fixes v0's main problem: on good clean-box masks v1 clicks 4% of the time and harm drops 16.2% -> 2.8%.
+- On perturbed boxes v1 more than doubles the best rule's gain at under 5% harm (about 55% of an ideal click).
+- On clean boxes the gain is small: v1 clicks on 49% of failures and, when it does, harms about as many (20%) as it
+  improves (25%). Correcting SAM 3's own clean-box mistakes is the open weakness.
+- The perturbed eval boxes come from the training distribution (P4's TRAIN_RANGES): RQ2 (real detector boxes) is untested.
+- Quality head on held-out training images: MAE 0.085, Pearson 0.88, failure AUROC 0.94 (`p5v1_train_0/final_val.json`).
+- Calibration (`p5v1_calib_0`): error threshold 0.7, tau 0.67; held-out harm on good masks 4.8% vs 21.7% without the gate.
+
+Figures (`scripts/p5_figures_v1.py`): `v1_tradeoff.png` (gain vs harm per method), `v1_bars.png`, `v1_severity.png`
+(gain and click rate vs prompt-box IoU), `v1_calibration.png`.
 
 ## What changes from v0 (docs/next_steps.md section 2, item 1)
 

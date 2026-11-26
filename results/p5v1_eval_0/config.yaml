@@ -1,0 +1,11 @@
+run_id: p5v1_eval_0
+git_commit: 7fbf4ae68108a28f7580ff6250a812cc58f09148
+seed: 0
+backend: sam3
+train_data: synthetic
+perturbations:
+- shift
+- scale
+- truncate
+max_steps: 1
+splits_file: splits_demo.json

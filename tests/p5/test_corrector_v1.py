@@ -130,6 +130,12 @@ def test_v1_chain_on_dummy(tmp_path):
     assert {"beats_rules", "harm_ok", "go"} <= set(gng.columns)
     assert iou_by_step(df, 2).shape[1] == 3
 
+    from promptcorrect.corrector.figures_v1 import bars, calibration, severity, tradeoff
+    curve = threshold_curve(calib, True)
+    for fig in (tradeoff(df, tmp_path / "t.png"), bars(df, tmp_path / "b.png"), severity(df, tmp_path / "s.png"),
+                calibration(curve, choose_thresholds(curve), tmp_path / "c.png")):
+        assert fig.stat().st_size > 0
+
 
 def test_eval_prompts_are_independent_of_training_draws(objects):
     rec = objects[0]
