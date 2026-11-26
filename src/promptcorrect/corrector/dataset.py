@@ -28,6 +28,7 @@ class SampleSet:
     box: Tensor      # bool [N, S, S]
     clicks: Tensor   # float32 [N, K, 3], label -1 = padding
     meta: list[dict]
+    iou: Tensor | None = None  # float32 [N]: full-res IoU of the stored mask vs GT (meta "iou"), v1 quality target
 
     def __len__(self) -> int:
         return len(self.meta)
@@ -35,10 +36,12 @@ class SampleSet:
     def subset(self, idx) -> "SampleSet":
         idx_t = torch.as_tensor(idx, dtype=torch.long)
         return SampleSet(**{k: getattr(self, k)[idx_t.to(getattr(self, k).device)] for k in ARRAYS},
-                         meta=[self.meta[i] for i in idx_t.tolist()])
+                         meta=[self.meta[i] for i in idx_t.tolist()],
+                         iou=None if self.iou is None else self.iou[idx_t.to(self.iou.device)])
 
     def to(self, device) -> "SampleSet":
-        return SampleSet(**{k: getattr(self, k).to(device) for k in ARRAYS}, meta=self.meta)
+        return SampleSet(**{k: getattr(self, k).to(device) for k in ARRAYS}, meta=self.meta,
+                         iou=None if self.iou is None else self.iou.to(device))
 
     def batch(self, idx: Tensor, flip: Tensor | None = None) -> tuple[Tensor, Tensor, Tensor]:
         """-> (inputs [B,9,S,S], targets [B,2,S,S], valid [B,S,S]); `flip` bool [B] = horizontal flip."""
@@ -64,7 +67,7 @@ def load_samples(sample_dir: str | Path, max_samples: int | None = None) -> Samp
     arrays = {k: torch.from_numpy(np.concatenate(v)) for k, v in parts.items()}
     if len(meta) != len(arrays["rgb"]):
         raise ValueError(f"{sample_dir}: {len(meta)} meta rows but {len(arrays['rgb'])} samples")
-    ds = SampleSet(**arrays, meta=meta)
+    ds = SampleSet(**arrays, meta=meta, iou=torch.tensor([float(m["iou"]) for m in meta], dtype=torch.float32))
     return ds.subset(range(max_samples)) if max_samples and max_samples < len(ds) else ds
 
 

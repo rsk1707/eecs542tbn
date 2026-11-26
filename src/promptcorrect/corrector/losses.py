@@ -1,4 +1,4 @@
-"""Error-map losses: per-pixel BCE + soft Dice per (sample, channel). Owner: P5."""
+"""Error-map losses: per-pixel BCE + soft Dice per (sample, channel); v1 adds the predicted-IoU loss. Owner: P5."""
 
 from __future__ import annotations
 
@@ -28,3 +28,8 @@ def error_map_loss(logits: Tensor, target: Tensor, valid: Tensor | None = None,
     bce = F.binary_cross_entropy_with_logits(logits, target, weight=v, reduction="sum") / max(n, 1.0)
     dice = dice_loss(logits, target, v)
     return bce + dice_weight * dice, {"bce": float(bce.detach()), "dice": float(dice.detach())}
+
+
+def quality_loss(q_logits: Tensor, iou: Tensor) -> Tensor:
+    """BCE between sigmoid(q_logits) [N] and the true IoU in [0, 1] [N] (a soft target; minimum at q = IoU)."""
+    return F.binary_cross_entropy_with_logits(q_logits.float(), iou.float().clamp(0, 1))

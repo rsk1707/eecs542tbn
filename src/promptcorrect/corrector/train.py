@@ -4,6 +4,10 @@ Validation reports, per error channel: pixel AUROC, IoU of the thresholded map w
 and for the click rule (clicks.py) the hit rate (click lands on a true error of the right kind) and the
 abstain rate. Validation is an image-level holdout of the training images; the demo val images are kept
 for the end-to-end rollout (rollout.py).
+
+v1 (`quality_head=True`): the loss adds `quality_weight` x BCE(predicted IoU, true IoU), and validation adds the
+predicted IoU's mean absolute error, its Pearson correlation with the true IoU, and the AUROC of
+1 - predicted IoU for spotting failures (true IoU < 0.75). The val loss used for best.pt includes the term.
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ import torch
 
 from promptcorrect.corrector.clicks import click_hits, propose_click
 from promptcorrect.corrector.dataset import SampleSet
-from promptcorrect.corrector.losses import error_map_loss
+from promptcorrect.corrector.losses import error_map_loss, quality_loss
 from promptcorrect.corrector.model import FN, FP, CorrectorNet, save_checkpoint
 
 
@@ -36,6 +40,9 @@ class TrainConfig:
     threshold: float = 0.5        # error-map threshold for IoU and clicks
     click_eval_samples: int = 2000  # per epoch; the final evaluation uses all val samples
     seed: int = 0
+    quality_head: bool = False    # v1: also predict the current mask's IoU (click-or-abstain signal)
+    quality_weight: float = 1.0
+    failure_iou: float = 0.75     # "failure" for the quality AUROC
 
 
 def auroc(scores: torch.Tensor, labels: torch.Tensor) -> float:
@@ -49,6 +56,14 @@ def auroc(scores: torch.Tensor, labels: torch.Tensor) -> float:
     return float((ranks[labels].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
 
 
+def quality_metrics(pred: torch.Tensor, true: torch.Tensor, failure_iou: float = 0.75) -> dict:
+    """Predicted vs true IoU [N]: MAE, Pearson r, AUROC of (1 - pred) for true IoU < failure_iou."""
+    pred, true = pred.double(), true.double()
+    r = float(torch.corrcoef(torch.stack([pred, true]))[0, 1]) if len(pred) > 1 else float("nan")
+    return {"q_mae": float((pred - true).abs().mean()), "q_pearson": r,
+            "q_fail_auroc": auroc(1 - pred, true < failure_iou), "q_fail_rate": float((true < failure_iou).double().mean())}
+
+
 @torch.no_grad()
 def evaluate(model: CorrectorNet, ds: SampleSet, cfg: TrainConfig, device, n_click: int | None = None,
              max_auroc_pixels: int = 2_000_000) -> dict:
@@ -58,6 +73,7 @@ def evaluate(model: CorrectorNet, ds: SampleSet, cfg: TrainConfig, device, n_cli
     inter, union = np.zeros(2), np.zeros(2)
     pix_scores, pix_labels = [[], []], [[], []]
     hits, abstain, n_clicked = 0, 0, 0
+    q_pred, q_true = [], []
     click_idx = set(torch.randperm(len(ds), generator=gen)[:n_click].tolist()) if n_click else set(range(len(ds)))
     keep_frac = min(1.0, max_auroc_pixels / max(1, len(ds) * ds.rgb.shape[-1] ** 2))
     for s in range(0, len(ds), cfg.batch_size * 2):
@@ -65,9 +81,14 @@ def evaluate(model: CorrectorNet, ds: SampleSet, cfg: TrainConfig, device, n_cli
         x, y, valid = ds.batch(idx.to(ds.rgb.device))
         x, y, valid = x.to(device), y.to(device), valid.to(device)
         with torch.autocast(device_type=torch.device(device).type, enabled=cfg.amp and torch.device(device).type == "cuda"):
-            logits = model(x)
+            logits, q = model.forward_all(x)
         logits = logits.float()
         loss, _ = error_map_loss(logits, y, valid, cfg.dice_weight)
+        if q is not None:
+            target = ds.iou[idx.to(ds.iou.device)].to(device)
+            loss = loss + cfg.quality_weight * quality_loss(q, target)
+            q_pred.append(torch.sigmoid(q.float()).cpu())
+            q_true.append(target.cpu())
         loss_sum, n_batches = loss_sum + float(loss), n_batches + 1
         probs = torch.sigmoid(logits)
         pred = probs > cfg.threshold
@@ -95,6 +116,8 @@ def evaluate(model: CorrectorNet, ds: SampleSet, cfg: TrainConfig, device, n_cli
     n_eval = n_clicked + abstain
     out.update(click_hit_rate=hits / n_clicked if n_clicked else float("nan"),
                abstain_rate=abstain / n_eval if n_eval else float("nan"), n_click_eval=n_eval)
+    if q_pred:
+        out.update(quality_metrics(torch.cat(q_pred), torch.cat(q_true), cfg.failure_iou))
     model.train()
     return out
 
@@ -103,7 +126,9 @@ def train(train_ds: SampleSet, val_ds: SampleSet, cfg: TrainConfig, out_dir: str
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     torch.manual_seed(cfg.seed)
-    model = CorrectorNet(base=cfg.base).to(device)
+    model = CorrectorNet(base=cfg.base, quality_head=cfg.quality_head).to(device)
+    if cfg.quality_head and train_ds.iou is None:
+        raise ValueError("quality_head needs per-sample IoU (meta 'iou')")
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     steps_per_epoch = math.ceil(len(train_ds) / cfg.batch_size)
     total = cfg.epochs * steps_per_epoch
@@ -119,15 +144,19 @@ def train(train_ds: SampleSet, val_ds: SampleSet, cfg: TrainConfig, out_dir: str
     for epoch in range(1, cfg.epochs + 1):
         model.train()
         perm = torch.randperm(len(train_ds), generator=gen)
-        run = {"loss": 0.0, "bce": 0.0, "dice": 0.0}
+        run = {"loss": 0.0, "bce": 0.0, "dice": 0.0, "quality": 0.0}
         for s in range(0, len(perm), cfg.batch_size):
             idx = perm[s:s + cfg.batch_size]
             flip = (torch.rand(len(idx), generator=gen) < 0.5) if cfg.flip else None
             x, y, valid = train_ds.batch(idx.to(train_ds.rgb.device), flip)
             x, y, valid = x.to(device, non_blocking=True), y.to(device), valid.to(device)
             with torch.autocast(device_type=torch.device(device).type, enabled=use_amp):
-                logits = model(x)
+                logits, q = model.forward_all(x)
             loss, parts = error_map_loss(logits.float(), y, valid, cfg.dice_weight)
+            if q is not None:
+                lq = quality_loss(q, train_ds.iou[idx.to(train_ds.iou.device)].to(device))
+                loss = loss + cfg.quality_weight * lq
+                parts["quality"] = float(lq.detach())
             opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.step(opt)
@@ -136,6 +165,7 @@ def train(train_ds: SampleSet, val_ds: SampleSet, cfg: TrainConfig, out_dir: str
             run["loss"] += float(loss.detach()) * len(idx)
             run["bce"] += parts["bce"] * len(idx)
             run["dice"] += parts["dice"] * len(idx)
+            run["quality"] += parts.get("quality", 0.0) * len(idx)
         row = {"epoch": epoch, **{f"train_{k}": v / len(train_ds) for k, v in run.items()},
                "lr": sched.get_last_lr()[0], "seconds": round(time.time() - t0, 1)}
         row.update(evaluate(model, val_ds, cfg, device, n_click=cfg.click_eval_samples))

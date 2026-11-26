@@ -1,4 +1,12 @@
-"""Train corrector v0 on samples from p5_make_samples.py (GPU, ~20-30 min). See promptcorrect/corrector/train.py.
+"""Train the corrector on samples from p5_make_samples.py / p4_make_samples.py (GPU). See promptcorrect/corrector/train.py.
+
+v1 (quality head, P4's perturbed-box samples; normally run through scripts/p5_run_v1.py):
+
+    sbatch --account=eecs542f26s001_class --time=02:00:00 --mem=96G --job-name=p5v1_train \
+        slurm/run_gpu.sbatch scripts/p5_train_corrector.py --paths configs/paths/greatlakes.yaml \
+        --run-id p5v1_train_0 --samples p4_samples_synth_0 --quality-head true
+
+v0 (as run on 2026-10-25):
 
     sbatch --account=eecs542f26s001_class --time=01:30:00 --mem=64G --job-name=p5_train \
         slurm/run_gpu.sbatch scripts/p5_train_corrector.py --paths configs/paths/greatlakes.yaml \
@@ -38,8 +46,8 @@ def main() -> None:
     cfg = TrainConfig(**{f: getattr(args, f) for f in asdict(TrainConfig())})
 
     out_dir = rooted_path(args.paths, "runs_root", args.run_id)
-    if (out_dir / "best.pt").exists():
-        raise FileExistsError(f"{out_dir}/best.pt exists; choose a new --run-id")
+    if (out_dir / "manifest.json").exists():  # written last: the run finished
+        raise FileExistsError(f"{out_dir}/manifest.json exists; choose a new --run-id")
     set_seed(cfg.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     sample_dir = rooted_path(args.paths, "runs_root", args.samples)
@@ -60,7 +68,7 @@ def main() -> None:
         for t in (0.2, 0.3, 0.4)}
     (out_dir / "final_val.json").write_text(json.dumps(final, indent=2) + "\n")
     training_curves(result["history"], out_dir / "training_curves.png")
-    manifest = {"samples": args.samples, "n_train": len(train_ds), "n_val": len(val_ds),
+    manifest = {"samples": args.samples, "val_frac": args.val_frac, "n_train": len(train_ds), "n_val": len(val_ds),
                 "n_val_images": len({m["image_id"] for m in val_ds.meta}), "train_config": asdict(cfg),
                 "n_params": result["n_params"], "seconds": result["seconds"], "best_val_loss": result["best_val_loss"],
                 "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),

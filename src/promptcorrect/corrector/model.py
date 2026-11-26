@@ -8,6 +8,10 @@ Input channels (all in the S x S object-centric crop, see crops.py), built by `b
   6    valid (0 outside the image)
   7-8  positive / negative click heatmaps (Gaussian, sigma 3 crop pixels)
 Output: 2-channel error-map logits, channel 0 = false positive (mask but not GT), 1 = false negative.
+
+v1 (`quality_head=True`) adds one scalar per sample: the logit of the current mask's predicted IoU with GT,
+from pooled bottleneck + decoder features and the predicted error mass. It drives the click-or-abstain
+decision (policy.py). v0 checkpoints have no head and load unchanged.
 """
 
 from __future__ import annotations
@@ -55,24 +59,42 @@ class _Block(nn.Sequential):
 
 
 class CorrectorNet(nn.Module):
-    def __init__(self, in_ch: int = IN_CHANNELS, base: int = 32, depth: int = 4, out_ch: int = 2):
+    def __init__(self, in_ch: int = IN_CHANNELS, base: int = 32, depth: int = 4, out_ch: int = 2,
+                 quality_head: bool = False):
         super().__init__()
         chs = [base * 2**i for i in range(depth)]
         self.enc = nn.ModuleList([_Block(in_ch if i == 0 else chs[i - 1], c) for i, c in enumerate(chs)])
         self.dec = nn.ModuleList([_Block(chs[i + 1] + chs[i], chs[i]) for i in reversed(range(depth - 1))])
         self.head = nn.Conv2d(base, out_ch, 1)
+        self.quality = (nn.Sequential(nn.Linear(chs[-1] + base + out_ch, 64), nn.ReLU(inplace=True), nn.Linear(64, 1))
+                        if quality_head else None)
         self.config = {"in_ch": in_ch, "base": base, "depth": depth, "out_ch": out_ch}
+        if quality_head:  # only stored when set, so v0 configs stay as they were
+            self.config["quality_head"] = True
 
-    def forward(self, x: Tensor) -> Tensor:
+    @property
+    def has_quality(self) -> bool:
+        return self.quality is not None
+
+    def forward_all(self, x: Tensor) -> tuple[Tensor, Tensor | None]:
+        """-> (error-map logits [N,2,S,S], predicted-IoU logits [N] or None without the quality head)."""
         skips = []
         for i, block in enumerate(self.enc):
             x = block(x if i == 0 else F.max_pool2d(x, 2))
             skips.append(x)
         x = skips.pop()
+        bottleneck = x
         for block in self.dec:
             skip = skips.pop()
             x = block(torch.cat([F.interpolate(x, size=skip.shape[-2:], mode="bilinear", align_corners=False), skip], 1))
-        return self.head(x)
+        maps = self.head(x)
+        if self.quality is None:
+            return maps, None
+        feats = torch.cat([bottleneck.mean((2, 3)), x.mean((2, 3)), torch.sigmoid(maps).mean((2, 3))], 1)
+        return maps, self.quality(feats.float()).squeeze(1)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.forward_all(x)[0]
 
 
 def save_checkpoint(model: CorrectorNet, path, **extra) -> None:
